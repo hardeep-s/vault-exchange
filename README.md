@@ -31,13 +31,32 @@ You must have a Vault server already running, unsealed, and authenticated. The c
 ## Configure the plugin 
 
 You need to provide the following arguments while configuring the plugin
-* token: Admin token ($admintoken)
-* path: Home path for the users secrets $secrets_sub_path. This path get appended to "secret" 
-* debug: Trace level for logging 
+* **token** Admin token ($admintoken)
+* **path** Home path for the users secrets $secrets_sub_path. This path get appended to "secret" 
+* **debug** Trace level for logging 
 
 ```sh
 $ vault write auth/exchange/config  display_name=exchange path=$secrets_sub_path token=$admintoken
 e.g
 $ vault write vault write auth/exchange/config  display_name=exchange path=cpe/keys token=$admintoken debug=1
 ```
+## Register users with vault
+This step creates a policy that gives the user all access to secret/$secrets_sub_path/$username/*
+* **token** User token ($usertoken)
+```sh
+$ vault write auth/exchange/register  token=$usertoken
+```
+
+## Grant and revoke access to a user on a given path
+* **token** User token ($usertoken)
+* **user** This is the username that is used by the target user for authentication   
+* **path** Read access is given/revoked to the target user to this path (secret/$secrets_sub_path/$granters_username/$secrets_for_targetuser)
+
+```sh
+vault write auth/exchange/command/grant user=$targetuser  path=$secrets_for_targetuser token=$usertoken
+
+vault write auth/exchange/command/revoke  user=hardeep  path=smart_secrets token=$usertoken
+```
+
+
 

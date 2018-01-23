@@ -1,0 +1,15 @@
+//authorize with admin token
+vault auth $roottoken
+vault auth-disable exchange
+mv $cwd/vault-exchange/pkg/darwin_386/vault-exchange $vault_path/plugin/
+rm /tmp/vault-exchange.log
+SHASUM=$(shasum -a 256 $vault_path/plugin/vault-exchange | cut -d " " -f1)
+vault write  sys/plugins/catalog/vault-exchange sha_256="$SHASUM" command="vault-exchange"
+vault auth-enable  -path=exchange  -plugin-name=vault-exchange plugin
+vault write auth/exchange/config  display_name=exchange path=$secrets_sub_path token=$roottoken
+
+//authorize with user token
+vault write auth/exchange/register  token=$usertoken 
+vault write auth/exchange/command/grant user=hardeep  path=smart_secrets token=$usertoken
+vault write auth/exchange/command/revoke  user=hardeep  path=smart_secrets token=$usertoken
+

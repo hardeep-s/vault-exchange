@@ -53,10 +53,13 @@ $ vault write auth/exchange/register  token=$usertoken
 * **path** Read access is given/revoked to the target user to this path (secret/$secrets_sub_path/$granters_username/$secrets_for_targetuser)
 
 ```sh
-vault write auth/exchange/command/grant user=$targetuser  path=$secrets_for_targetuser token=$usertoken
+$ vault write auth/exchange/command/grant user=$targetuser  path=$secrets_for_targetuser token=$usertoken
 
-vault write auth/exchange/command/revoke  user=hardeep  path=smart_secrets token=$usertoken
+$ vault write auth/exchange/command/revoke  user=$targetuser   path=$secrets_for_targetuser token=$usertoken
 ```
 
+## Issues
+There is a bug in the plugin framework that results in the logical.Request.EntityID being empty instead of containing 
+*the identity of the caller extracted out of the token used to make this request* (https://godoc.org/github.com/hashicorp/vault/logical#Request) . If this gets reolved then there should not be a need to pass user token in the grant/revoke calls  
 
 

@@ -1,7 +1,6 @@
 # vault-exchange
 Vault Exchange adds delegation capabilities to HashiCorp Vault in order to use it as a key exchange service between users.  
 It can also be used as an example for building a Vault auth plugin.
-
 **This code is a POC to demonstrate basic delegation capabilities using an Auth Plugin. Do not use it in production.**
 
 ## Setup
@@ -45,6 +44,10 @@ This step creates a policy that gives the user all access to secret/$secrets_sub
 ```sh
 $ vault write auth/exchange/register  token=$usertoken
 ```
+## Summary
+The user authenticate with vault and gets a token. First time users use this token to register with the plugin.
+Since vault separates authentication from authorization any one can authenticate with Vault can then do self authorization to a fixed home path. Once they register the plugin creates a home path for them where they can create and manage their secrets, it also creates an authorization policy for them which allows them access to this path as well as delegation command to the plugin. When they want to share a secret with another user they use the grant command to delegate the read privilege to the target  user for the secrets path. Under the covers the plugin updates the target users authorization policy and adds the secrets path to it
+
 
 ## Grant and revoke access to a user on a given path
 * **token** User token ($usertoken)

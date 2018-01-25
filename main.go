@@ -97,6 +97,11 @@ func pathConfig(b *backend) *framework.Path {
 				Type:        framework.TypeString,
 				Description: "admin token needed to update policy",
 			},
+			"auth": &framework.FieldSchema{
+				Type:        framework.TypeString,
+				Default:     "ldap",
+				Description: "Authentication type",
+			},
 			"path": &framework.FieldSchema{
 				Type:        framework.TypeString,
 				Default:     "CPE",
@@ -118,6 +123,7 @@ func pathConfig(b *backend) *framework.Path {
 type configData struct {
 	RootToken string `json:"root_token"`
 	RootPath  string `json:"root_path"`
+	AuthType  string `json:"auth_type"`
 	Debug     int    `json:"debug"`
 }
 
@@ -127,6 +133,7 @@ func (b *backend) writeConfig(req *logical.Request, data *framework.FieldData) (
 	configinfo := &configData{
 		RootToken: data.Get("token").(string),
 		RootPath:  data.Get("path").(string),
+		AuthType:  data.Get("auth").(string),
 		Debug:     debuglevel,
 	}
 	entry, err := logical.StorageEntryJSON("config/info", configinfo)
@@ -153,7 +160,7 @@ func (b *backend) readConfig(req *logical.Request) (*configData, error) {
 	if err := entry.DecodeJSON(&result); err != nil {
 		return nil, fmt.Errorf("error reading configuration: %s", err)
 	}
-	//Trace(0,"CONFIG 3",result, &result,result.RootPath,result.RootToken)
+	Trace(0,"CONFIG 3",result, &result,result.RootPath,result.RootToken)
 	return &result, nil
 }
 
@@ -163,9 +170,9 @@ func pathRegister(b *backend) *framework.Path {
 	return &framework.Path{
 		Pattern: "register",
 		Fields: map[string]*framework.FieldSchema{
-			"token": &framework.FieldSchema{
+			"user": &framework.FieldSchema{
 				Type:        framework.TypeString,
-				Description: "User authentication toke.",
+				Description: "User name.",
 			},
 			"path": &framework.FieldSchema{
 				Type:        framework.TypeString,
@@ -214,26 +221,23 @@ func (b *backend) registerUsers(req *logical.Request, data *framework.FieldData)
 	if err != nil {
 		return logical.ErrorResponse("failed to read config"), err
 	}
-	token := data.Get("token").(string)
-	usertoken := b.verifyToken(req, token)
-	if usertoken == nil || usertoken.Expired {
-		return logical.ErrorResponse("invalid token"), nil
-	}
+	user := data.Get("user").(string)
 	c := &ClientMeta{
 		Meta: meta.Meta{
 			ClientToken: entry.RootToken,
 			Ui:          nil,
 		},
 	}
-	//c.readUser(usertoken.Username) 
-	if usertoken.PolicyFound {
-		//return logical.ErrorResponse("User " + usertoken.Username + " is already registered"), nil
-	}
 
-	policystr := b.accessPath(usertoken.Username,  entry.RootPath, "*")+
+	res,err := c.readUser(entry.AuthType,user)
+	if res !=nil {
+		return logical.ErrorResponse("User " + user + " is already registered"), nil
+	}
+	c.writeUser(entry.AuthType,user)
+	policystr := b.accessPath(user,  entry.RootPath, "*")+
 		"\" { capabilities = [\"create\", \"read\", \"update\", \"delete\", \"list\"] }\n" +
 		"path \"auth/exchange/command/*\" { capabilities = [\"update\"] } "
-	return  c.writePolicy(usertoken.Username, policystr)
+	return  c.writePolicy(user, policystr)
 }
 
 
@@ -322,7 +326,6 @@ func (b *backend) removeRuleFromPolicy(policy,path string) string {
 }
 
 
-
 func (c *ClientMeta) read(path string) (map[string]interface{}, error) {
       client, err := c.Client()
         if err != nil {
@@ -347,17 +350,48 @@ func (c *ClientMeta) read(path string) (map[string]interface{}, error) {
 	err = resp.DecodeJSON(&result)
 	return result,nil
 }
-func (c *ClientMeta) readUser(name string) (string, error) {
-//c.read("/v1/sys/policy/hardeep")
-//c.read("/v1/auth/ldap/users/hardeep")
-	result,err :=c.read("/v1/auth/userpass/users/"+name)
-	Trace(0,"readUser->result",result, err)
-	if policyRaw, ok := result["data"]; ok {
-		Trace(0,"readUser->policyRaw->",policyRaw)
+
+func (c *ClientMeta) write(path string ,body map[string]string) ( error) {
+	Trace(0,"write->Start->",path,body)
+      	client, err := c.Client()
+        if err != nil {
+                Trace(0, "write->Client->Error", err)
+                return   err
+        }
+
+	r := client.NewRequest("PUT", path)
+	if err := r.SetJSONBody(body); err != nil {
+		Trace(0,"write->SetJSONBody->Error",err)
+		return  err
 	}
-return "",nil
+	resp, err := client.RawRequest(r)
+	Trace(0,"write->Response ",resp,err)
+	defer resp.Body.Close()
+	Trace(0,"DONE WRITE")
+	return err
+}
+
+
+func (c *ClientMeta) readUser(authtype,name string) (interface {}, error) {
+	result,err :=c.read("/v1/auth/"+authtype+"/users/"+name)
+	Trace(0,"readUser->result",result, err)
+	if err ==nil {
+		if policyRaw, ok := result["data"]; ok {
+			Trace(0,"readUser->policyRaw->",policyRaw)
+			return policyRaw,nil
+		}
+	}
+	return nil ,err
 
 }
+
+func (c *ClientMeta) writeUser(authtype,name string) (error) {
+	body := map[string]string{
+		"policies": name,
+	}
+	return c.write("/v1/auth/"+authtype+"/users/"+name, body)
+}
+
 func (c *ClientMeta) readPolicy(name string) (string, error) {
 	Trace(1, "readPolicy->", name)
 	client, err := c.Client()
@@ -448,9 +482,8 @@ func EnableTrace(filename string) {
 	debuglevel = 10
 	file, err := os.OpenFile(filename, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 	if err == nil {
-		//trace = log.New(io.MultiWriter(file, os.Stdout), "Keymaster_Backend: ", log.Ldate|log.Ltime|log.Lshortfile)
-		trace = log.New(io.MultiWriter(file), "Delegate_Plugin: ", log.Ldate|log.Ltime|log.Lshortfile)
+		trace = log.New(io.MultiWriter(file), "Exchange Plugin: ", log.Ldate|log.Ltime|log.Lshortfile)
 	} else {
-		trace = log.New(os.Stdout, "Delegate_Plugin: ", log.Ldate|log.Ltime|log.Lshortfile)
+		trace = log.New(os.Stdout, "Exchange Plugin: ", log.Ldate|log.Ltime|log.Lshortfile)
 	}
 }

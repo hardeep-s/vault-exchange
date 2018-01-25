@@ -31,18 +31,19 @@ You must have a Vault server already running, unsealed, and authenticated. The c
 You need to provide the following arguments while configuring the plugin
 * **token** Admin token ($admintoken)
 * **path** Home path for the users secrets $secrets_sub_path. This path get appended to "secret" 
+* **auth** Authentication Type (tested with ldap)
 * **debug** Trace level for logging 
 
 ```sh
-$ vault write auth/exchange/config  display_name=exchange path=$secrets_sub_path token=$admintoken
+$ vault write auth/exchange/config  display_name=exchange auth=$auth_type path=$secrets_sub_path token=$admintoken
 e.g
-$ vault write vault write auth/exchange/config  display_name=exchange path=cpe/keys token=$admintoken debug=1
+$ vault write vault write auth/exchange/config  display_name=exchange auth=ldap path=cpe/keys token=$admintoken debug=1
 ```
 ## Register users with vault
-This step creates a policy that gives the user all access to secret/$secrets_sub_path/$username/*
-* **token** User token ($usertoken)
+This step creates a user in the auth path as well as a policy that gives the user all access to secret/$secrets_sub_path/$username/*
+* **user** User name ($username_login_name)
 ```sh
-$ vault write auth/exchange/register  token=$usertoken
+$ vault write auth/exchange/register  user=$username_login_name
 ```
 
 ## Grant and revoke access to a user on a given path
@@ -56,8 +57,8 @@ $ vault write auth/exchange/command/grant user=$targetuser  path=$secrets_for_ta
 $ vault write auth/exchange/command/revoke  user=$targetuser   path=$secrets_for_targetuser token=$usertoken
 ```
 ## Summary
-The user authenticate with vault and gets a token. First time users use this token to register with the plugin.
-Since vault separates authentication from authorization any one can authenticate with Vault can then do self authorization to a fixed home path. Once they register the plugin creates a home path for them where they can create and manage their secrets, it also creates an authorization policy for them which allows them access to this path as well as delegation command to the plugin. When they want to share a secret with another user they use the grant command to delegate the read privilege to the target  user for the secrets path. Under the covers the plugin updates the target users authorization policy and adds the secrets path to it
+User registers with vault using their authentcation credentials (username). Since the registeration path is un authenticated it allows anyone to register their login name with vault. During the registeration process the plugin creates a home path for the users where they can storetheir secrets, it also creates an authorization policy for them which allows them access to this path. 
+Once users are registered they can login to vault. This results in a token being generated that is needed for the grant/revoke commands. When they want to share a secret with other users they use the **grant** command to delegate the read privilege to the user for the secrets path. Under the covers the plugin updates the target users authorization policy and adds the secrets path to it
 
 
 

@@ -272,10 +272,10 @@ func (b *backend) runCommand(req *logical.Request, data *framework.FieldData) (*
 	case "grant":
 		policystr := targetpath +"\" { capabilities = [\"read\"] }"
         	targetuserpolicy=b.removeRuleFromPolicy(targetuserpolicy,targetpath)
-        	return c.writePolicy(usertoken.Username, targetuserpolicy+"\n"+policystr)
+        	return c.writePolicy(targetuser, targetuserpolicy+"\n"+policystr)
 	case "revoke":
         	targetuserpolicy=b.removeRuleFromPolicy(targetuserpolicy,targetpath)
-        	return c.writePolicy(usertoken.Username, targetuserpolicy)
+        	return c.writePolicy(targetuser, targetuserpolicy)
 	default:
 	}
 	return logical.ErrorResponse("invalid command"), nil

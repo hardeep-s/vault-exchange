@@ -43,7 +43,7 @@ This step creates a user in the configured authentication path as well as a poli
 ```sh
 $ vault write auth/exchange/register  user=$username
 ```
-**Note:** Register is an unauthenticated call. So effectively any user can self register.
+**Note:** Register is an unauthenticated call. So effectively users can self register. They will still need to authenticate to do anything else
 
 ## Grant and revoke access to a user on a given path
 * **token** User token ($usertoken)

@@ -39,9 +39,9 @@ $ vault write vault write auth/exchange/config  display_name=exchange auth=ldap 
 ```
 ## Register users with vault
 This step creates a user in the configured authentication path as well as a policy that gives the user all access to their home path(  secret/$root_path/$username/*)
-* **user** User name ($username_login_name)
+* **user** Users login name ($username)
 ```sh
-$ vault write auth/exchange/register  user=$username_login_name
+$ vault write auth/exchange/register  user=$username
 ```
 **Note:** Register is an unauthenticated call. So effectively any user can self register.
 

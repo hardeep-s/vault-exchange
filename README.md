@@ -35,7 +35,7 @@ You need to provide the following arguments while configuring the plugin
 ```sh
 $ vault write auth/exchange/config  display_name=exchange auth=$auth_type path=$root_path token=$admintoken
 e.g
-$ vault write vault write auth/exchange/config  display_name=exchange auth=ldap path=cpe/keys token=$admintoken debug=1
+$ vault write vault write auth/exchange/config  display_name=exchange auth=ldap path=mycompany/myorg token=$admintoken debug=1
 ```
 ## Register users with vault
 This step creates a user in the configured authentication path as well as a policy that gives the user all access to their home path(  secret/$root_path/$username/*)

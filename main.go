@@ -27,7 +27,6 @@ type ClientMeta struct {
 
 type TokenMeta struct {
 	Username    string
-	Idtype      string
 	Expires     time.Time
 	Expired     bool
 	Path        string

@@ -8,7 +8,6 @@ import (
 	"github.com/hashicorp/vault/logical"
 	"github.com/hashicorp/vault/logical/framework"
 	"github.com/hashicorp/vault/logical/plugin"
-	"io"
 	"log"
 	"os"
 	"strings"
@@ -28,6 +27,7 @@ type ClientMeta struct {
 
 type TokenMeta struct {
 	Username    string
+	Idtype      string
 	Expires     time.Time
 	Expired     bool
 	Path        string
@@ -42,7 +42,7 @@ type backend struct {
 }
 
 func main() {
-	EnableTrace("/tmp/vault-exchange.log")
+	EnableTrace()
 	apiClientMeta := &pluginutil.APIClientMeta{}
 	flags := apiClientMeta.FlagSet()
 	flags.Parse(os.Args[1:])
@@ -102,11 +102,6 @@ func pathConfig(b *backend) *framework.Path {
 				Default:     "exchange/home",
 				Description: "root for user paths",
 			},
-			"debug": &framework.FieldSchema{
-				Type:        framework.TypeInt,
-				Default:     0,
-				Description: "Trace level",
-			},
 		},
 
 		Callbacks: map[logical.Operation]framework.OperationFunc{
@@ -119,22 +114,20 @@ type configData struct {
 	RootToken string `json:"root_token"`
 	RootPath  string `json:"root_path"`
 	AuthType  string `json:"auth_type"`
-	Debug     int    `json:"debug"`
 }
 
 func (b *backend) writeConfig(ctx context.Context, req *logical.Request, data *framework.FieldData) (*logical.Response, error) {
-	debuglevel = data.Get("debug").(int)
 	configinfo := &configData{
 		RootToken: data.Get("token").(string),
 		RootPath:  data.Get("path").(string),
 		AuthType:  data.Get("auth").(string),
-		Debug:     debuglevel,
 	}
 	entry, err := logical.StorageEntryJSON("config/info", configinfo)
 	if err != nil {
 		return nil, err
 	}
 
+	Trace(0, configinfo, entry)
 	if err := req.Storage.Put(ctx, entry); err != nil {
 		return nil, err
 	}
@@ -179,7 +172,7 @@ func pathRegister(b *backend) *framework.Path {
 
 
 func (b *backend) registerUsersAndGroups(ctx context.Context, req *logical.Request, data *framework.FieldData) (*logical.Response, error) {
-	Trace(3, "registerUsers->  DATA=", data, "CLIENTTOKEN=", req.ClientToken)
+	Trace(3, "registerUsers->  DATA=", data)
 	entry, err := b.readConfig(ctx, req)
 	if err != nil {
 		return logical.ErrorResponse("failed to read config"), err
@@ -198,7 +191,7 @@ func (b *backend) registerUsersAndGroups(ctx context.Context, req *logical.Reque
 	if c.writeID(entry.AuthType, idtype, name) != nil {
 		return logical.ErrorResponse("Failed to create " + idtype + " " + name + " in the auth path"), nil
 	}
-	policystr := b.accessPath(name, entry.RootPath, "*") +
+	policystr := b.accessPath(name, idtype, entry.RootPath, "*") +
 		"\" { capabilities = [\"create\", \"read\", \"update\", \"delete\", \"list\"] }\n" +
 		"path \"auth/exchange/command/*\" { capabilities = [\"update\"] } "
 	return c.writePolicy(name, policystr)
@@ -206,8 +199,8 @@ func (b *backend) registerUsersAndGroups(ctx context.Context, req *logical.Reque
 
 
 
-func (b *backend) accessPath(name, root, path string) string {
-	return "path \"secret/" + root + "/" + name + "/" + strings.TrimLeft(path, "/")
+func (b *backend) accessPath(name, idtype, root, path string) string {
+	return "path \"secret/" + root + "/" +  idtype + "/" + name + "/" + strings.TrimLeft(path, "/")
 }
 
 func (b *backend) removeRuleFromPolicy(policy, path string) string {
@@ -322,14 +315,8 @@ func Trace(level int, args ...interface{}) {
 		trace.Println(args)
 	}
 }
-func EnableTrace(filename string) {
-	debuglevel = 10
-	file, err := os.OpenFile(filename, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
-	if err == nil {
-		trace = log.New(io.MultiWriter(file, os.Stdout), "Exchange Plugin: ", log.Ldate|log.Ltime|log.Lshortfile)
-	} else {
-		trace = log.New(os.Stdout, "Exchange Plugin: ", log.Ldate|log.Ltime|log.Lshortfile)
-	}
+func EnableTrace() {
+	trace = log.New(os.Stdout, "Exchange Plugin: ", log.Ldate|log.Ltime|log.Lshortfile)
 }
 
 /*
@@ -337,122 +324,3 @@ This part of code is used for granting access to own path to others, now it is s
 and not available to use. 
 
 */
-func pathCommands(b *backend) *framework.Path {
-	return &framework.Path{
-		Pattern: "command/" + framework.GenericNameRegex("command"),
-		Fields: map[string]*framework.FieldSchema{
-			"command": &framework.FieldSchema{
-				Type:        framework.TypeString,
-				Description: "action to be taken (grant/revoke)",
-			},
-
-			"token": &framework.FieldSchema{
-				Type:        framework.TypeString,
-				Description: "Users authentication token",
-			},
-			"path": &framework.FieldSchema{
-				Type:        framework.TypeString,
-				Description: "Path to share.",
-			},
-			"name": &framework.FieldSchema{
-				Type:        framework.TypeString,
-				Description: "Target User or Group to grant access.",
-			},
-		},
-		Callbacks: map[logical.Operation]framework.OperationFunc{
-			logical.UpdateOperation: b.runCommand,
-		},
-	}
-}
-
-func (b *backend) runCommand(ctx context.Context, req *logical.Request, data *framework.FieldData) (*logical.Response, error) {
-	Trace(8, "runCommand-> PATH=", req.Path, "DATA=", data, "CLIENTTOKEN=", req.ClientToken, "ENTITYID", req.EntityID, req.Headers)
-	entry, err := b.readConfig(ctx, req)
-	if err != nil {
-		return logical.ErrorResponse("failed to read config"), err
-	}
-	cmdArr := strings.Split(req.Path, "/")
-	if len(cmdArr) != 2 {
-		return logical.ErrorResponse("invalid command"), nil
-	}
-	command := strings.ToLower(cmdArr[1])
-	if data.Get("path") == nil || data.Get("token") == nil || data.Get("user") == nil {
-		return logical.ErrorResponse("insufficent arguments in the command"), nil
-	}
-	token := data.Get("token").(string)
-	usertoken := b.verifyToken(ctx, req, token)
-	if usertoken == nil || usertoken.Expired {
-		return logical.ErrorResponse("invalid token"), nil
-	}
-	Trace(1, "runCommand> UserToken =", usertoken)
-	c := &ClientMeta{
-		ClientToken: entry.RootToken,
-	}
-	path := data.Get("path").(string)
-	targetuser := data.Get("name").(string)
-	targetuserpolicy, err := c.readPolicy(targetuser)
-	if err != nil || targetuserpolicy == "" {
-		return logical.ErrorResponse("failed to load policy for " + targetuser), err
-	}
-	targetpath := b.accessPath(usertoken.Username, entry.RootPath, path)
-
-	switch command {
-	case "grant":
-		policystr := targetpath + "\" { capabilities = [\"read\"] }"
-		targetuserpolicy = b.removeRuleFromPolicy(targetuserpolicy, targetpath)
-		return c.writePolicy(targetuser, targetuserpolicy+"\n"+policystr)
-	case "revoke":
-		targetuserpolicy = b.removeRuleFromPolicy(targetuserpolicy, targetpath)
-		return c.writePolicy(targetuser, targetuserpolicy)
-	default:
-	}
-	return logical.ErrorResponse("invalid command"), nil
-
-}
-
-func (b *backend) verifyToken(ctx context.Context, req *logical.Request, token string) *TokenMeta {
-	if token == "" {
-		return nil
-	}
-	entry, _ := b.readConfig(ctx, req)
-	c := &ClientMeta{
-		ClientToken: entry.RootToken,
-	}
-	client, _ := c.Client()
-	if client != nil && client.Auth() != nil {
-		tk, _ := client.Auth().Token().Lookup(token)
-		meta := tk.Data["meta"]
-		mtop := meta.(map[string]interface{})
-		username := mtop["username"].(string)
-		const timeForm = "2018-01-27T22:26:24.667710605-08:00"
-		expires, _ := time.Parse(time.RFC3339Nano, tk.Data["expire_time"].(string))
-		path := tk.Data["path"].(string)
-		diplayname := tk.Data["display_name"].(string)
-		policies := tk.Data["policies"].([]interface{})
-		policyfound := false
-		for i := 0; i < len(policies); i++ {
-			if policies[i].(string) == username {
-				policyfound = true
-			}
-		}
-		now := time.Now()
-		t := &TokenMeta{
-			Username:    username,
-			Expires:     expires,
-			Expired:     now.After(expires),
-			Path:        path,
-			Policies:    policies,
-			PolicyFound: policyfound,
-			DisplayName: diplayname,
-		}
-		if t.Path != "" {
-			authpaths := strings.Split(t.Path, "/")
-			if len(authpaths) >= 4 && authpaths[3] == username {
-				t.AuthType = authpaths[1]
-			}
-		}
-		Trace(9, "verifyToken-> Returned Token", *t)
-		return t
-	}
-	return nil
-}

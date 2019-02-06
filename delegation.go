@@ -1,5 +1,12 @@
 package main
 
+
+/*
+This part of code is used for granting access to own path to others, now it is still under developing
+and not available to use. 
+
+*/
+
 import (
 	"context"
 	"github.com/hashicorp/vault/logical"
@@ -110,7 +117,6 @@ func (b *backend) verifyToken(ctx context.Context, req *logical.Request, token s
 		now := time.Now()
 		t := &TokenMeta{
 			Username:    username,
-			Idtype:		 idtype,
 			Expires:     expires,
 			Expired:     now.After(expires),
 			Path:        path,
@@ -128,4 +134,30 @@ func (b *backend) verifyToken(ctx context.Context, req *logical.Request, token s
 		return t
 	}
 	return nil
+}
+
+func (b *backend) removeRuleFromPolicy(policy, path string) string {
+	policyArray := strings.Split(policy, "\n")
+	policstr := ""
+	for i := 0; i < len(policyArray); i++ {
+		if strings.Index(policyArray[i], path) == -1 {
+			policstr += strings.TrimSpace(policyArray[i])
+		}
+	}
+	return policstr
+}
+
+func (c *ClientMeta) readPolicy(name string) (string, error) {
+	client, err := c.Client()
+	if err != nil {
+		Trace(0, "readPolicy->Client->Error", err)
+		return "", err
+	}
+
+	policy, err := client.Sys().GetPolicy(name)
+	if err != nil {
+		Trace(0, "readPolicy->GetPolicy->Error", err)
+		return "", err
+	}
+	return policy, nil
 }

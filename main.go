@@ -70,19 +70,21 @@ func Backend() *backend {
 		Help: backendHelp,
 		PathsSpecial: &logical.Paths{
 			Unauthenticated: []string{
-				"register",
+				//"register",
 			},
 		},
 		Paths: append([]*framework.Path{
 			pathConfig(&b),
 			pathRegister(&b),
-			pathCommands(&b),
+			//pathCommands(&b),
 		}),
 		BackendType: logical.TypeCredential,
 	}
 	return &b
 }
 
+//Parameters used for configuring this plugin. 
+//It needs authentication method, path of registration as well as root token
 func pathConfig(b *backend) *framework.Path {
 	return &framework.Path{
 		Pattern: "config",
@@ -115,6 +117,7 @@ type configData struct {
 	AuthType  string `json:"auth_type"`
 }
 
+//write the plugin config to vault server
 func (b *backend) writeConfig(ctx context.Context, req *logical.Request, data *framework.FieldData) (*logical.Response, error) {
 	configinfo := &configData{
 		RootToken: data.Get("token").(string),
@@ -125,14 +128,13 @@ func (b *backend) writeConfig(ctx context.Context, req *logical.Request, data *f
 	if err != nil {
 		return nil, err
 	}
-
-	Trace(0, configinfo, entry)
 	if err := req.Storage.Put(ctx, entry); err != nil {
 		return nil, err
 	}
 	return nil, nil
 }
 
+//when register users or groups, read the plugin configuration and use them as parameters in path creation
 func (b *backend) readConfig(ctx context.Context, req *logical.Request) (*configData, error) {
 	entry, err := req.Storage.Get(ctx, "config/info")
 	if err != nil {
@@ -149,6 +151,8 @@ func (b *backend) readConfig(ctx context.Context, req *logical.Request) (*config
 	return &result, nil
 }
 
+//configure the command used for registering a user/group
+//when registering a user/group, you need to specify the name and the type of identity.
 func pathRegister(b *backend) *framework.Path {
 	return &framework.Path{
 		Pattern: "register",
@@ -169,9 +173,8 @@ func pathRegister(b *backend) *framework.Path {
 }
 
 
-
+// the function for registering a user/group. Read plugin configuration and create a path and corresponding policy for the user/group
 func (b *backend) registerUsersAndGroups(ctx context.Context, req *logical.Request, data *framework.FieldData) (*logical.Response, error) {
-	Trace(3, "registerUsers->  DATA=", data)
 	entry, err := b.readConfig(ctx, req)
 	if err != nil {
 		return logical.ErrorResponse("failed to read config"), err
@@ -202,17 +205,7 @@ func (b *backend) accessPath(name, idtype, root, path string) string {
 	return "path \"secret/" + root + "/" +  idtype + "/" + name + "/" + strings.TrimLeft(path, "/")
 }
 
-func (b *backend) removeRuleFromPolicy(policy, path string) string {
-	policyArray := strings.Split(policy, "\n")
-	policstr := ""
-	for i := 0; i < len(policyArray); i++ {
-		if strings.Index(policyArray[i], path) == -1 {
-			policstr += strings.TrimSpace(policyArray[i])
-		}
-	}
-	return policstr
-}
-
+// Init a client running as root
 func (c *ClientMeta) Client() (*api.Client, error) {
 	config := api.DefaultConfig()
 	client, err := api.NewClient(config)
@@ -221,6 +214,8 @@ func (c *ClientMeta) Client() (*api.Client, error) {
 	}
 	return client, err
 }
+
+//read contents from a path
 func (c *ClientMeta) read(path string) (map[string]interface{}, error) {
 	client, err := c.Client()
 	if err != nil {
@@ -247,6 +242,7 @@ func (c *ClientMeta) read(path string) (map[string]interface{}, error) {
 	return result, nil
 }
 
+//write contents to a path
 func (c *ClientMeta) write(path string, body map[string]string) error {
 	client, err := c.Client()
 	if err != nil {
@@ -264,6 +260,7 @@ func (c *ClientMeta) write(path string, body map[string]string) error {
 	return err
 }
 
+//check whether the user/group has already been registered
 func (c *ClientMeta) readID(authtype, idtype, name string) (interface{}, error) {
 	result, err := c.read("/v1/auth/" + authtype + "/" + idtype + "/" + name)
 	if err == nil {
@@ -275,6 +272,7 @@ func (c *ClientMeta) readID(authtype, idtype, name string) (interface{}, error) 
 
 }
 
+//map the policy for the user/group
 func (c *ClientMeta) writeID(authtype, idtype, name string) error {
 	body := map[string]string{
 		"policies": name,
@@ -282,20 +280,7 @@ func (c *ClientMeta) writeID(authtype, idtype, name string) error {
 	return c.write("/v1/auth/"+authtype+"/"+idtype+"/"+name, body)
 }
 
-func (c *ClientMeta) readPolicy(name string) (string, error) {
-	client, err := c.Client()
-	if err != nil {
-		Trace(0, "readPolicy->Client->Error", err)
-		return "", err
-	}
-
-	policy, err := client.Sys().GetPolicy(name)
-	if err != nil {
-		Trace(0, "readPolicy->GetPolicy->Error", err)
-		return "", err
-	}
-	return policy, nil
-}
+//write a policy to Vault
 func (c *ClientMeta) writePolicy(name, rules string) (*logical.Response, error) {
 	client, err := c.Client()
 	if err != nil {
@@ -308,18 +293,14 @@ func (c *ClientMeta) writePolicy(name, rules string) (*logical.Response, error) 
 	return nil, nil
 }
 
-
+// Application logs print to standard output
 func Trace(level int, args ...interface{}) {
 	if level <= debuglevel {
 		trace.Println(args)
 	}
 }
 func EnableTrace() {
+	debuglevel = 0
 	trace = log.New(os.Stdout, "Exchange Plugin: ", log.Ldate|log.Ltime|log.Lshortfile)
 }
 
-/*
-This part of code is used for granting access to own path to others, now it is still under developing
-and not available to use. 
-
-*/

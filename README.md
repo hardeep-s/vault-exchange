@@ -24,7 +24,7 @@ You must have a Vault server already running, unsealed, and authenticated. The c
 1. Enable the plugin
 
   ```sh
-  $ vault auth-enable -path=exchange  -plugin-name=vault-exchange plugin
+  $ vault auth enable -path=exchange  -plugin-name=vault-exchange plugin
   ```
 
 ## Configure the plugin 
@@ -35,17 +35,19 @@ You need to provide the following arguments while configuring the plugin
 * **debug** Trace level for logging 
 
 ```sh
-$ vault write auth/exchange/config  display_name=exchange auth=$auth_type path=$root_path token=$admintoken
+$ vault write auth/exchange/config  display_name=exchange auth=$auth_type path=$root_path token=$roottoken
 e.g
-$ vault write vault write auth/exchange/config  display_name=exchange auth=ldap path=mycompany/myorg token=$admintoken debug=1
+$ vault write vault write auth/exchange/config  display_name=exchange auth=ldap path=mycompany/myorg token=$roottoken debug=1
 ```
-## Register users with vault
-This step creates a user in the configured authentication path as well as a policy that gives the user all access to their home path(  secret/$root_path/$username/*)
+## Register users or groups with vault
+This step creates a user/group in the configured authentication path as well as a policy that gives the user/group all access to their home path(  secret/$root_path/$username/*)
 * **user** Users login name ($username)
 ```sh
-$ vault write auth/exchange/register  user=$username
+$ vault write auth/exchange/register  type=groups/users name=$groupname/$username
 ```
-**Note:** Register is an unauthenticated call. So effectively users can self register. They will still need to authenticate to do anything else
+**Note:** Register is an authenticated call. So effectively users need to login first and then register
+
+
 
 ## Grant and revoke access to a user on a given path
 * **token** User token ($usertoken)
@@ -58,7 +60,7 @@ $ vault write auth/exchange/command/grant user=$targetuser  path=$target_path to
 $ vault write auth/exchange/command/revoke  user=$targetuser   path=$target_path token=$usertoken
 ```
 ## Summary
-Users register with vault using their username (from their authentication credentials). Since the registration path is un authenticated it allows anyone to register their login name with vault. During the registration process the plugin creates a home path for the users where they can store their secrets, it also creates an authorization policy for them which allows them access to this path. 
+Users register with vault using their username (from their authentication credentials). Since the registration path is authenticated, it needs user to login first and it allows user to register their login name as well as ldap groups name with vault. During the registration process the plugin creates a home path for the users/groups where they can store their secrets, it also creates an authorization policy for them which allows them access to this path. 
 Once users are registered they can login to vault. This results in a token being generated that is needed for the grant/revoke commands. When they want to share a secret with other users they use the **grant** command to delegate the read privilege to the target user for their secrets. Under the covers the plugin updates the target users authorization policy and adds the path to the secrets.
 
 

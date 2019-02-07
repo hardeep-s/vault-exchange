@@ -161,3 +161,7 @@ func (c *ClientMeta) readPolicy(name string) (string, error) {
 	}
 	return policy, nil
 }
+
+func (b *backend) accessPath(name, idtype, root, path string) string {
+	return "path \"secret/" + root + "/" +  idtype + "/" + name + "/" + strings.TrimLeft(path, "/")
+}

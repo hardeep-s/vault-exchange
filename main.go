@@ -10,7 +10,6 @@ import (
 	"github.com/hashicorp/vault/logical/plugin"
 	"log"
 	"os"
-	"strings"
 	"time"
 )
 
@@ -193,17 +192,18 @@ func (b *backend) registerUsersAndGroups(ctx context.Context, req *logical.Reque
 	if c.writeID(entry.AuthType, idtype, name) != nil {
 		return logical.ErrorResponse("Failed to create " + idtype + " " + name + " in the auth path"), nil
 	}
-	policystr := b.accessPath(name, idtype, entry.RootPath, "*") +
-		"\" { capabilities = [\"create\", \"read\", \"update\", \"delete\", \"list\"] }\n" +
-		"path \"auth/exchange/command/*\" { capabilities = [\"update\"] } "
+	
+	policystr := "path \"kv/data/" + entry.RootPath + "/" + idtype + "/" + name + "/*\" {\n capabilities = [\"create\", \"read\", \"update\", \"sudo\"]\n}\n" + 
+				 "path \"kv/delete/" + entry.RootPath + "/" + idtype + "/" + name + "/*\" {\n capabilities = [\"update\"]\n}\n" + 
+				 "path \"kv/undelete/" + entry.RootPath + "/" + idtype + "/" + name + "/*\" {\n capabilities = [\"update\"]\n}\n" + 
+				 "path \"kv/destroy/" + entry.RootPath + "/" + idtype + "/" + name + "/*\" {\n capabilities = [\"update\"]\n}\n" + 
+				 "path \"kv/metadata/" + entry.RootPath + "/" + idtype + "/" + name + "/*\" {\n capabilities = [\"list\",\"delete\",\"read\"]\n}\n" + 
+				 "path \"kv/metadata/" + entry.RootPath + "/" + idtype + "/" + name + "/*\" {\n capabilities = [\"list\",\"read\"]\n}\n"
+	
 	return c.writePolicy(name, policystr)
 }
 
 
-
-func (b *backend) accessPath(name, idtype, root, path string) string {
-	return "path \"secret/" + root + "/" +  idtype + "/" + name + "/" + strings.TrimLeft(path, "/")
-}
 
 // Init a client running as root
 func (c *ClientMeta) Client() (*api.Client, error) {

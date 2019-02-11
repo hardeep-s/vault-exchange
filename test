@@ -18,23 +18,4 @@ vault auth-enable  -path=exchange  -plugin-name=vault-exchange plugin
 vault write auth/exchange/config  display_name=exchange path=mycompany/myorg token=$admintoken
 
 #register users
-vault write auth/exchange/register  user=hardeep 
-vault write auth/exchange/register  user=hardeep_s 
-
-
-#write a secrets
-vault auth -method=ldap username=hardeep
-vault write secret/mycompany/myorg/hardeep/mysecrets value="the_secret"
-
-#Share the secret
-vault write auth/exchange/command/grant user=hardeep_s  path=mysecrets token=$usertoken
-
-#read the shared secrets
-vault auth -method=ldap username=hardeep_s
-vault read secret/mycompany/myorg/hardeep/mysecrets
-
-#revoke access to the secret
-vault auth -method=ldap username=hardeep
-vault write auth/exchange/command/revoke  user=hardeep_s  path=mysecrets token=$usertoken
-
-
+vault write auth/exchange/register  type="groups" name="exchange-test-group" 

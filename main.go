@@ -67,15 +67,9 @@ func Backend() *backend {
 	var b backend
 	b.Backend = &framework.Backend{
 		Help: backendHelp,
-		PathsSpecial: &logical.Paths{
-			Unauthenticated: []string{
-				//"register",
-			},
-		},
 		Paths: append([]*framework.Path{
 			pathConfig(&b),
 			pathRegister(&b),
-			//pathCommands(&b),
 		}),
 		BackendType: logical.TypeCredential,
 	}

@@ -6,8 +6,6 @@ vault auth-disable exchange
 #copy plugin to vault's plugin directory 
 mv ./vault-exchange/pkg/darwin_386/vault-exchange $vault_path/plugin/
 
-# clean existing log file
-rm /tmp/vault-exchange.log
 
 #install the plugin
 SHASUM=$(shasum -a 256 $vault_path/plugin/vault-exchange | cut -d " " -f1)

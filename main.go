@@ -2,28 +2,28 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"github.com/hashicorp/vault/api"
-	"github.com/hashicorp/vault/helper/pluginutil"
-	"github.com/hashicorp/vault/logical"
-	"github.com/hashicorp/vault/logical/framework"
-	"github.com/hashicorp/vault/logical/plugin"
+	"github.com/hashicorp/vault/sdk/framework"
+	"github.com/hashicorp/vault/sdk/logical"
+	"github.com/hashicorp/vault/sdk/plugin"
 	"log"
 	"os"
-	"time"
+	"strings"
 )
 
 const backendHelp = ` 
 The "vault-exchange" backend allows users to grant access to secrets in their home paths to other users
 `
-
+const authpath = "/v1/auth/"
 var debuglevel int
 var trace *log.Logger
 
 type ClientMeta struct {
 	ClientToken string
 }
-
+/*
 type TokenMeta struct {
 	Username    string
 	Expires     time.Time
@@ -34,6 +34,7 @@ type TokenMeta struct {
 	DisplayName string
 	AuthType    string
 }
+*/
 
 type backend struct {
 	*framework.Backend
@@ -41,11 +42,11 @@ type backend struct {
 
 func main() {
 	EnableTrace()
-	apiClientMeta := &pluginutil.APIClientMeta{}
+	apiClientMeta := &api.PluginAPIClientMeta{}
 	flags := apiClientMeta.FlagSet()
 	flags.Parse(os.Args[1:])
 	tlsConfig := apiClientMeta.GetTLSConfig()
-	tlsProviderFunc := pluginutil.VaultPluginTLSProvider(tlsConfig)
+	tlsProviderFunc := api.VaultPluginTLSProvider(tlsConfig)
 
 	if err := plugin.Serve(&plugin.ServeOpts{
 		BackendFactoryFunc: Factory,
@@ -76,6 +77,9 @@ func Backend() *backend {
 	return &b
 }
 
+
+
+
 //Parameters used for configuring this plugin. 
 //It needs authentication method, path of registration as well as root token
 func pathConfig(b *backend) *framework.Path {
@@ -85,11 +89,6 @@ func pathConfig(b *backend) *framework.Path {
 			"token": &framework.FieldSchema{
 				Type:        framework.TypeString,
 				Description: "admin token needed to make updates",
-			},
-			"auth": &framework.FieldSchema{
-				Type:        framework.TypeString,
-				Default:     "ldap",
-				Description: "Authentication type",
 			},
 			"path": &framework.FieldSchema{
 				Type:        framework.TypeString,
@@ -107,7 +106,6 @@ func pathConfig(b *backend) *framework.Path {
 type configData struct {
 	RootToken string `json:"root_token"`
 	RootPath  string `json:"root_path"`
-	AuthType  string `json:"auth_type"`
 }
 
 //write the plugin config to vault server
@@ -115,7 +113,6 @@ func (b *backend) writeConfig(ctx context.Context, req *logical.Request, data *f
 	configinfo := &configData{
 		RootToken: data.Get("token").(string),
 		RootPath:  data.Get("path").(string),
-		AuthType:  data.Get("auth").(string),
 	}
 	entry, err := logical.StorageEntryJSON("config/info", configinfo)
 	if err != nil {
@@ -150,13 +147,13 @@ func pathRegister(b *backend) *framework.Path {
 	return &framework.Path{
 		Pattern: "register",
 		Fields: map[string]*framework.FieldSchema{
-			"type": &framework.FieldSchema{
+			"group_name": &framework.FieldSchema{
 				Type:        framework.TypeString,
-				Description: "user or group",
+				Description: "Group name to register",
 			},
-			"name": &framework.FieldSchema{
+			"user_name": &framework.FieldSchema{
 				Type:        framework.TypeString,
-				Description: "Users/Groups name.",
+				Description: "User name to register.",
 			},
 		},
 		Callbacks: map[logical.Operation]framework.OperationFunc{
@@ -168,22 +165,41 @@ func pathRegister(b *backend) *framework.Path {
 
 // the function for registering a user/group. Read plugin configuration and create a path and corresponding policy for the user/group
 func (b *backend) registerUsersAndGroups(ctx context.Context, req *logical.Request, data *framework.FieldData) (*logical.Response, error) {
+	auth := strings.Split(req.DisplayName, "-")[0]
+	user := strings.TrimPrefix(req.DisplayName, auth + "-")
+	Trace(0, "registerUsersAndGroups-> 1",req.DisplayName,auth,user)
 	entry, err := b.readConfig(ctx, req)
 	if err != nil {
 		return logical.ErrorResponse("failed to read config"), err
 	}
-	name := data.Get("name").(string)
-	idtype := data.Get("type").(string)
 
 	c := &ClientMeta{
 		ClientToken: entry.RootToken,
 	}
 
-	res, err := c.readID(entry.AuthType, idtype, name)
+	groupname := data.Get("group_name").(string)
+	userName := data.Get("user_name").(string)
+
+    if groupname == "" && userName == "" {
+		return logical.ErrorResponse("You need to provide a user or group name"), errors.New("You need to provide a user or group name")
+	} else if groupname != "" && userName != "" {
+		return logical.ErrorResponse("You can register either a user or a group not both"), errors.New("You can register either a user or a group not both")
+	}
+
+	idtype := "users"
+	name := userName
+	if groupname != "" {
+			idtype = "groups"
+			name =groupname
+	}
+
+	res, err := c.readID(auth, idtype, name)
 	if res != nil {
 		return logical.ErrorResponse("User " + idtype + " " + name + " is already registered"), nil
 	}
-	if c.writeID(entry.AuthType, idtype, name) != nil {
+
+	policy_name := idtype + "-" + name
+	if c.writeID(auth, idtype, name,policy_name) != nil {
 		return logical.ErrorResponse("Failed to create " + idtype + " " + name + " in the auth path"), nil
 	}
 	
@@ -256,23 +272,25 @@ func (c *ClientMeta) write(path string, body map[string]string) error {
 
 //check whether the user/group has already been registered
 func (c *ClientMeta) readID(authtype, idtype, name string) (interface{}, error) {
-	result, err := c.read("/v1/auth/" + authtype + "/" + idtype + "/" + name)
-	if err == nil {
-		if policyRaw, ok := result["data"]; ok {
-			return policyRaw, nil
-		}
+	result, err := c.read(authpath + authtype + "/" + idtype + "/" + name)
+	if err != nil {
+		return nil, err
 	}
-	return nil, err
+	if policyRaw, ok := result["data"]; ok {
+		return policyRaw, nil
+	}
+	return nil, errors.New("error read identity data")
 
 }
 
 //map the policy for the user/group
-func (c *ClientMeta) writeID(authtype, idtype, name string) error {
+func (c *ClientMeta) writeID(authtype, idtype, name, policy string) error {
 	body := map[string]string{
-		"policies": name,
+		"policies": policy,
 	}
-	return c.write("/v1/auth/"+authtype+"/"+idtype+"/"+name, body)
+	return c.write(authpath+authtype+"/"+idtype+"/"+name, body)
 }
+
 
 //write a policy to Vault
 func (c *ClientMeta) writePolicy(name, rules string) (*logical.Response, error) {

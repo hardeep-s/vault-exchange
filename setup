@@ -1,18 +1,76 @@
+#*******Download vault binary
+
+#*******Install and setup  GO env
 brew install golang
 go version
 go env GOPATH
 go env -w GOPATH=~/Workspace/go
-github.com/hashicorp/vault/api
+go get github.com/hashicorp/vault/api
+go get github.com/hashicorp/go-hclog.
+#*******hack - rename the hashicorp vault vendor directory to fix build errors
 mv ~/Workspace/go/src/github.com/hashicorp/vault/vendor/github.com/hashicorp/vault ~/Workspace/go/src/github.com/hashicorp/vault/vendor/github.com/hashicorp/vault_back
 
-~/Workspace/bin/vault server -config=config.json 
-~/Workspace/bin/vault operator unseal
-~/Workspace/bin/vault login
-~/Workspace/bin/vault status
+#******* Generate Certs
+mkdir certs
+cd certs
+openssl req -x509 -out localhost.crt -keyout localhost.key   -newkey rsa:2048 -nodes -sha256   -subj '/CN=localhost' -extensions EXT -config <( \
+   printf "[dn]\nCN=localhost\n[req]\ndistinguished_name = dn\n[EXT]\nsubjectAltName=DNS:localhost\nkeyUsage=digitalSignature\nextendedKeyUsage=serverAuth")
 
+#*******update your hosts file to point localhost  to 127.0.0.1
+
+
+#*******create the vault storage & plugin dir
+mkdir -p vault/data
+mkdir vault/plugin
+mkdir vault/log
+
+#*******For self signed certs set skip verify before startinng the server
+export VAULT_SKIP_VERIFY=true
+
+#*******Start the vault server
+~/Workspace/bin/vault server -config=config.json 
+~/Workspace/bin/vault   operator init -key-shares=1 -key-threshold=1
+#*******Save the unseal keys and root token
+~/Workspace/bin/vault status 
+
+#*******setup the vault endpoint for the vault client
+export VAULT_ADDR='https://localhost:8200'
+#*******setup skip verify for the client
+export VAULT_SKIP_VERIFY=true
+
+#*******Now Unseal Vault
+~/Workspace/bin/vault operator unseal 
+
+~/Workspace/bin/vault login 
+#*******use the root token since you will need to be privileged to setup plugin
+
+#*******enable password authentication
+~/Workspace/bin/vault auth enable userpass
+~/Workspace/bin/vault write auth/userpass/users/test password=password policies=admins
+
+#*******update default policy to allow authenticated users to make exchange API calls
+ ~/Workspace/bin/vault read sys/policy/default > new_default_policy.hcl
+#*******Remove the comments in the begining of the file and 
+#*******Add the following to the default policy
+
+# Allow all tokens to make exchange calls
+path "auth/exchange/*" {
+    capabilities = ["update"]
+}
+
+#*******update the default policy
+~/Workspace/bin/vault policy write default  new_default_policy.hcl
+
+
+#*******Setup the plugin
 cp vault-exchange vault/plugin
 export SHA256=$(shasum -a 256 vault/plugin/vault-exchange | cut -d' ' -f1)
-~/Workspace/bin/vault write sys/plugins/catalog/vault-exchange  sha_256="${SHA256}" command="vault-exchange"
+~/Workspace/bin/vault auth disable exchange 
+~/Workspace/bin/vault write sys/plugins/catalog/vault-exchange  sha_256="${SHA256}" command="vault-exchange" 
 ~/Workspace/bin/vault auth enable -path=exchange  -plugin-name=vault-exchange plugin 
-~/Workspace/bin/vault plugin list | grep vault-exchange
+~/Workspace/bin/vault plugin list  | grep vault-exchange
+~/Workspace/bin/vault write auth/exchange/config display_name=exchange path=testenv/infosecorg token=$admintoken 
 
+
+~/Workspace/bin/vault login -method=userpass  username=test password=password
+~/Workspace/bin/vault write auth/exchange/register  user_name="test" 

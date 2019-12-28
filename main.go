@@ -8,6 +8,7 @@ import (
 	"github.com/hashicorp/vault/sdk/framework"
 	"github.com/hashicorp/vault/sdk/logical"
 	"github.com/hashicorp/vault/sdk/plugin"
+	//"github.com/hashicorp/go-hclog"
 	"log"
 	"os"
 	"strings"
@@ -23,28 +24,18 @@ var trace *log.Logger
 type ClientMeta struct {
 	ClientToken string
 }
-/*
-type TokenMeta struct {
-	Username    string
-	Expires     time.Time
-	Expired     bool
-	Path        string
-	Policies    []interface{}
-	PolicyFound bool
-	DisplayName string
-	AuthType    string
-}
-*/
 
 type backend struct {
 	*framework.Backend
 }
+ 
 
 func main() {
 	EnableTrace()
 	apiClientMeta := &api.PluginAPIClientMeta{}
 	flags := apiClientMeta.FlagSet()
 	flags.Parse(os.Args[1:])
+
 	tlsConfig := apiClientMeta.GetTLSConfig()
 	tlsProviderFunc := api.VaultPluginTLSProvider(tlsConfig)
 
@@ -52,7 +43,8 @@ func main() {
 		BackendFactoryFunc: Factory,
 		TLSProviderFunc:    tlsProviderFunc,
 	}); err != nil {
-		log.Fatal(err)
+		Trace(0, "main->","plugin shutting down", "error", err)
+		os.Exit(1)
 	}
 }
 
@@ -76,8 +68,6 @@ func Backend() *backend {
 	}
 	return &b
 }
-
-
 
 
 //Parameters used for configuring this plugin. 
@@ -110,6 +100,7 @@ type configData struct {
 
 //write the plugin config to vault server
 func (b *backend) writeConfig(ctx context.Context, req *logical.Request, data *framework.FieldData) (*logical.Response, error) {
+	Trace(0, "writeConfig->Begin ")
 	configinfo := &configData{
 		RootToken: data.Get("token").(string),
 		RootPath:  data.Get("path").(string),
@@ -121,6 +112,7 @@ func (b *backend) writeConfig(ctx context.Context, req *logical.Request, data *f
 	if err := req.Storage.Put(ctx, entry); err != nil {
 		return nil, err
 	}
+	Trace(0, "writeConfig-> End",configinfo.RootPath)
 	return nil, nil
 }
 
@@ -167,7 +159,6 @@ func pathRegister(b *backend) *framework.Path {
 func (b *backend) registerUsersAndGroups(ctx context.Context, req *logical.Request, data *framework.FieldData) (*logical.Response, error) {
 	auth := strings.Split(req.DisplayName, "-")[0]
 	user := strings.TrimPrefix(req.DisplayName, auth + "-")
-	Trace(0, "registerUsersAndGroups-> 1",req.DisplayName,auth,user)
 	entry, err := b.readConfig(ctx, req)
 	if err != nil {
 		return logical.ErrorResponse("failed to read config"), err
@@ -179,11 +170,12 @@ func (b *backend) registerUsersAndGroups(ctx context.Context, req *logical.Reque
 
 	groupname := data.Get("group_name").(string)
 	userName := data.Get("user_name").(string)
+	Trace(0, "registerUsersAndGroups-> 2",req.DisplayName,auth,user, groupname,userName)
 
     if groupname == "" && userName == "" {
-		return logical.ErrorResponse("You need to provide a user or group name"), errors.New("You need to provide a user or group name")
+		return logical.ErrorResponse("You need to provide  user_name or group_name"), errors.New("You need to provide a user or group name")
 	} else if groupname != "" && userName != "" {
-		return logical.ErrorResponse("You can register either a user or a group not both"), errors.New("You can register either a user or a group not both")
+		return logical.ErrorResponse("You can register either a user_name or a group_name not both"), errors.New("You can register either a user or a group not both")
 	}
 
 	idtype := "users"
@@ -194,6 +186,7 @@ func (b *backend) registerUsersAndGroups(ctx context.Context, req *logical.Reque
 	}
 
 	res, err := c.readID(auth, idtype, name)
+Trace(0,"LLLLLLLLLLLLLLL L",res,err)
 	if res != nil {
 		return logical.ErrorResponse("User " + idtype + " " + name + " is already registered"), nil
 	}
@@ -238,7 +231,7 @@ func (c *ClientMeta) read(path string) (map[string]interface{}, error) {
 	if resp != nil {
 		defer resp.Body.Close()
 		if resp.StatusCode == 404 {
-			Trace(0, "read->Response->404")
+			Trace(0, "read->Response->404",r.URL,resp.Body)
 			return nil, nil
 		}
 	}
@@ -254,6 +247,7 @@ func (c *ClientMeta) read(path string) (map[string]interface{}, error) {
 
 //write contents to a path
 func (c *ClientMeta) write(path string, body map[string]string) error {
+Trace(0,"SSSSSSSSSS ",path)
 	client, err := c.Client()
 	if err != nil {
 		Trace(0, "write->Client->Error", err)
@@ -265,7 +259,9 @@ func (c *ClientMeta) write(path string, body map[string]string) error {
 		Trace(0, "write->Response->SetJSONBody->Error", err)
 		return err
 	}
+Trace(0,"EEEEEEEEEEE ",path)
 	resp, err := client.RawRequest(r)
+Trace(0,"JJJJJJJJJJJ ",resp,err)
 	defer resp.Body.Close()
 	return err
 }
@@ -308,11 +304,16 @@ func (c *ClientMeta) writePolicy(name, rules string) (*logical.Response, error) 
 // Application logs print to standard output
 func Trace(level int, args ...interface{}) {
 	if level <= debuglevel {
-		trace.Println(args)
+		trace.Println("Vault-Exchange PLUGIN TRACE -> ",args)
 	}
 }
+
 func EnableTrace() {
 	debuglevel = 0
-	trace = log.New(os.Stdout, "Exchange Plugin: ", log.Ldate|log.Ltime|log.Lshortfile)
+	f, err := os.OpenFile("vault/log/vault-exchange.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		trace = log.New(os.Stdout, "Exchange Plugin: ", log.Ldate|log.Ltime|log.Lshortfile)
+	} else {
+		trace = log.New(f, "Exchange Plugin: ", log.Ldate|log.Ltime|log.Lshortfile)
+	}
 }
-

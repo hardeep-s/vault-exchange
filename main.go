@@ -100,7 +100,7 @@ type configData struct {
 
 //write the plugin config to vault server
 func (b *backend) writeConfig(ctx context.Context, req *logical.Request, data *framework.FieldData) (*logical.Response, error) {
-	Trace(0, "writeConfig->Begin ")
+	trace.Println("Vault-Exchange PLUGIN TRACE -> ","writeConfig->Begin ")
 	configinfo := &configData{
 		RootToken: data.Get("token").(string),
 		RootPath:  data.Get("path").(string),
@@ -112,7 +112,7 @@ func (b *backend) writeConfig(ctx context.Context, req *logical.Request, data *f
 	if err := req.Storage.Put(ctx, entry); err != nil {
 		return nil, err
 	}
-	Trace(0, "writeConfig-> End",configinfo.RootPath)
+	trace.Println("Vault-Exchange PLUGIN TRACE -> ","writeConfig->Done ")
 	return nil, nil
 }
 
@@ -171,11 +171,14 @@ func (b *backend) registerUsersAndGroups(ctx context.Context, req *logical.Reque
 	groupname := data.Get("group_name").(string)
 	userName := data.Get("user_name").(string)
 	Trace(0, "registerUsersAndGroups-> 2",req.DisplayName,auth,user, groupname,userName)
+	trace.Println("Vault-Exchange PLUGIN TRACE -> ","registerUsersAndGroups-> ",req.DisplayName,auth,user, groupname,userName)
 
     if groupname == "" && userName == "" {
 		return logical.ErrorResponse("You need to provide  user_name or group_name"), errors.New("You need to provide a user or group name")
 	} else if groupname != "" && userName != "" {
 		return logical.ErrorResponse("You can register either a user_name or a group_name not both"), errors.New("You can register either a user or a group not both")
+	} else if  userName != "" && userName != user {
+		return logical.ErrorResponse("You can only register yourself as a user"), errors.New("You can only register yourself as a user")
 	}
 
 	idtype := "users"

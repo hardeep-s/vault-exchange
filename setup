@@ -1,4 +1,6 @@
-#*******Download vault binary
+#************ setup and test on MAC
+brew install vault
+#************ or downlaod the vault binary and save it in your workspace
 
 #*******Install and setup  GO env
 brew install golang
@@ -17,7 +19,9 @@ openssl req -x509 -out localhost.crt -keyout localhost.key   -newkey rsa:2048 -n
    printf "[dn]\nCN=localhost\n[req]\ndistinguished_name = dn\n[EXT]\nsubjectAltName=DNS:localhost\nkeyUsage=digitalSignature\nextendedKeyUsage=serverAuth")
 
 #*******update your hosts file to point localhost  to 127.0.0.1
-
+vi /etc/hosts
+#add the following line to it
+127.0.0.1   localhost
 
 #*******create the vault storage & plugin dir
 mkdir -p vault/data
@@ -28,52 +32,76 @@ mkdir vault/log
 export VAULT_SKIP_VERIFY=true
 
 #*******Start the vault server
-~/Workspace/bin/vault server -config=config.json 
+~/Workspace/bin/vault server -config=config.hcl 
 ~/Workspace/bin/vault   operator init -key-shares=1 -key-threshold=1
-#*******Save the unseal keys and root token
-~/Workspace/bin/vault status 
+#*******Save the unseal keys and root token 
+export admintoken=your_root_token 
 
 #*******setup the vault endpoint for the vault client
 export VAULT_ADDR='https://localhost:8200'
-#*******setup skip verify for the client
 export VAULT_SKIP_VERIFY=true
 
 #*******Now Unseal Vault
 ~/Workspace/bin/vault operator unseal 
+#********* Verify Vault status
+~/Workspace/bin/vault status 
 
+#*******login using the root token since you will need to be privileged to setup plugin
 ~/Workspace/bin/vault login 
-#*******use the root token since you will need to be privileged to setup plugin
+
+#******** Enable Secrets Engine
+~/Workspace/bin/vault secrets enable -version=1 kv
+
+#~/Workspace/bin/vault secrets enable -version=2 kv
 
 #*******update default policy to allow authenticated users to make exchange API calls
  ~/Workspace/bin/vault read sys/policy/default > new_default_policy.hcl
-#*******Remove the comments in the begining of the file and 
-#*******Add the following to the default policy
-
-# Allow all tokens to make exchange calls
+#*******Remove comments (first 3 lines) &  add the following to the default policy
 path "auth/exchange/*" {
     capabilities = ["update"]
 }
+path "auth/token/lookup" {
+    capabilities = ["read"]
+}
 
-#*******update the default policy
+#********* Update the default policy
 ~/Workspace/bin/vault policy write default  new_default_policy.hcl
 
 #Enable OIDC authentication
 ~/Workspace/bin/vault auth enable oidc
-~/Workspace/bin/vault write auth/oidc/config oidc_discovery_url=$ENDPOINT oidc_client_id=$CLIENT_ID oidc_client_secret=$CLIENT_SECRET default_role="test"
- ~/Workspace/bin/vault write auth/oidc/role/test bound_audiences="$CLIENT_ID" allowed_redirect_uris="https://localhost:8200/ui/vault/auth/oidc/oidc/callback" user_claim="email" groups_claim="groups" oidc_scopes="groups"  policies="default"
-
+#*********** - example onelogin SSO
+export CLIENT_ID=$$$$$$$$$$$$$$$$
+export CLIENT_SECRET=$$$$$$$$$$$$$$$
+export ENDPOINT=https://openid-connect.onelogin.com/oidc
+~/Workspace/bin/vault write auth/oidc/config oidc_discovery_url=$ENDPOINT oidc_client_id=$CLIENT_ID oidc_client_secret=$CLIENT_SECRET default_role="onelogin"
+ ~/Workspace/bin/vault write auth/oidc/role/onelogin bound_audiences="$CLIENT_ID" allowed_redirect_uris="https://localhost:8200/ui/vault/auth/oidc/oidc/callback" user_claim="preferred_username" groups_claim="groups" oidc_scopes="groups"  policies="default"
 
 #*******Setup the plugin
-~/Workspace/bin/vault login 
-#*******use the root token since you will need to be privileged to setup plugin
 cp vault-exchange vault/plugin
 export SHA256=$(shasum -a 256 vault/plugin/vault-exchange | cut -d' ' -f1)
 ~/Workspace/bin/vault auth disable exchange 
 ~/Workspace/bin/vault write sys/plugins/catalog/vault-exchange  sha_256="${SHA256}" command="vault-exchange" 
 ~/Workspace/bin/vault auth enable -path=exchange  -plugin-name=vault-exchange plugin 
 ~/Workspace/bin/vault plugin list  | grep vault-exchange
-~/Workspace/bin/vault write auth/exchange/config display_name=exchange path=testenv/infosecorg token=$admintoken 
+~/Workspace/bin/vault write auth/exchange/config display_name=exchange path=kv token=$admintoken 
 
 #Login from UI using OIDC and your SSO. Copy the vault token and use it in the next commans
 ~/Workspace/bin/vault login  login token=$copied_token-here
-~/Workspace/bin/vault write auth/exchange/register  user_name="test" 
+~/Workspace/bin/vault write auth/exchange/register  name="Your SSO group Name Here" 
+# ********** This step will create the following  path "kv/secret/data/groups/Infosec/group_secrets/"
+#*********** Relogin from UI using OIDC and your SSO. You should be able to crerate secrets under this path 
+
+#********** Copy the vault token and use it to create a secrert using the Vault CLI
+~/Workspace/bin/vault login  login token=$copied_token-here
+~/Workspace/bin/vault kv put kv/secret/data/groups/Infosec/group_secrets/my_new_secret key=mysecret
+
+#*********** If you want to see the policy that was created when you registered the group
+~/Workspace/bin/vault read sys/policy/groups-Your_SSO_group_Name_Here > temp
+~/Workspace/bin/vault policy write groups-groups-Your_SSO_group_Name_Here temp
+
+#****************** utility calls
+~/Workspace/bin/vault path-help  entity
+~/Workspace/bin/vault list identity/group/name
+~/Workspace/bin/vault list sys/policy
+~/Workspace/bin/vault  kv list kv/
+~/Workspace/bin/vault  secrets list -detailed

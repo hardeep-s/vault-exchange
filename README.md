@@ -3,7 +3,7 @@ The main problem with this approach is that vault requires an administrator to c
 
 
 # vault-exchange
-Vault Exchange adds self-management capabilities to HashiCorp Vault enabling it to be used as a secret store for service secrets without requiring an administrator. The exchange achieves this by allowing any authenticated user to add an LDAP group to vault. The policy associated with the LDAP group allows all members of the groups (including services) to access the group path to read and write secrets.
+Vault Exchange adds self-management capabilities to HashiCorp Vault enabling it to be used as a secret store for service secrets without requiring an administrator. The exchange achieves this by allowing any authenticated user to add an OIDC group to vault. The policy associated with the OIDC group allows all members of the groups (including services) to access the group path to read and write secrets.
 
 **This code is a POC to demonstrate basic delegation capabilities using an Auth Plugin.**
 
@@ -33,19 +33,18 @@ You must have a Vault server already running, unsealed, and authenticated. The c
 ## Configure the plugin 
 You need to provide the following arguments while configuring the plugin
 * **token** Admin token ($admintoken)
-* **path** Root path for the organization to store secrets. This path gets appended to "secret" 
-* **auth** Authentication Type 
+* **path** Secret engine path 
 
 ```sh
-$ vault write auth/exchange/config  display_name=exchange auth=$auth_type path=$root_path token=$roottoken
+$ vault write auth/exchange/config  display_name=exchange  path=$kv_path token=$roottoken
 e.g
-$ vault write vault write auth/exchange/config  display_name=exchange auth=ldap path=mycompany/myorg token=$roottoken debug=1
+$ vault write vault write auth/exchange/config  display_name=exchange  path=kv token=$roottoken 
 ```
-## Register users or groups with vault
-This step creates a user/group in the configured authentication path as well as a policy that gives the user/group all access to their home path(  secret/$root_path/$username/*)
+## Register  groups with vault
+This step creates a group in the configured authentication path as well as a policy that gives the group all access to their home path()
 * **user** Users login name ($username)
 ```sh
-$ vault write auth/exchange/register  type=groups/users name=$groupname/$username
+$ vault write auth/exchange/register   name=$groupname
 ```
 **Note:** Register is an authenticated call. So effectively users need to login first and then register
 

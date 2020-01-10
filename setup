@@ -85,19 +85,39 @@ export SHA256=$(shasum -a 256 vault/plugin/vault-exchange | cut -d' ' -f1)
 ~/Workspace/bin/vault plugin list  | grep vault-exchange
 ~/Workspace/bin/vault write auth/exchange/config display_name=exchange path=kv token=$admintoken 
 
-#Login from UI using OIDC and your SSO. Copy the vault token and use it in the next commans
+#*****************Register Groups
+#*************Login from UI using OIDC and your SSO. Copy the vault token and use it in the next commans
 ~/Workspace/bin/vault login  login token=$copied_token-here
-~/Workspace/bin/vault write auth/exchange/register  name="Your SSO group Name Here" 
+~/Workspace/bin/vault write auth/exchange/registergroup  group_name="Your SSO group Name Here" 
 # ********** This step will create the following  path "kv/secret/data/groups/Infosec/group_secrets/"
-#*********** Relogin from UI using OIDC and your SSO. You should be able to crerate secrets under this path 
 
-#********** Copy the vault token and use it to create a secrert using the Vault CLI
+#*************** Enable AWS Authentication
+~/Workspace/bin/vault auth enable aws  
+~/Workspace/bin/vault write auth/aws/config/client secret_key=$AWS_VAULT_USER_SECRETj access_key=$AWS_VAULT_USER_ID
+
+#~/Workspace/bin/vault write auth/aws/role/dev-role-iam auth_type=iam bound_iam_principal_arn=arn:aws:iam::123456789012:role/MyRole policies=prod,dev max_ttl=500h
+
+#*************** Enable AWS Authentication
+vault auth enable kubernetes
+vault write auth/kubernetes/config token_reviewer_jwt="reviewer_service_account_jwt" kubernetes_host=https://192.168.99.100:8443 kubernetes_ca_cert=@ca.crt
+
+
+
+#********** Copy the vault token from the UI and use it to create a secrert using the Vault CLI
 ~/Workspace/bin/vault login  login token=$copied_token-here
 ~/Workspace/bin/vault kv put kv/secret/data/groups/Infosec/group_secrets/my_new_secret key=mysecret
+
+
+
+
 
 #*********** If you want to see the policy that was created when you registered the group
 ~/Workspace/bin/vault read sys/policy/groups-Your_SSO_group_Name_Here > temp
 ~/Workspace/bin/vault policy write groups-groups-Your_SSO_group_Name_Here temp
+
+
+
+
 
 #****************** utility calls
 ~/Workspace/bin/vault path-help  entity

@@ -20,17 +20,14 @@ func (b *backend) registerGroups(ctx context.Context, req *logical.Request, data
 	if err != nil {
 		return logical.ErrorResponse("failed to read config"), err
 	}
-	groupname := data.Get("name").(string)
+	groupname := data.Get("group_name").(string)
 	trace.Println("Vault-Exchange PLUGIN TRACE -> ","registerGroups-> ",req.DisplayName,req.ControlGroup,auth,user, groupname)
 
-/*
 	rc := &ClientMeta{
-		ClientToken: req.ClientToken,
+		ClientToken: data.Get("token").(string),
 	}
 	val,err1:=rc.readToken()
 	trace.Println("AAAAAAAAA ->Vault-Exchange PLUGIN TRACE -> ","registerGroups-> ",val,err1)
-	c.writeSecret(configEntry,groupname,"Registered OIDC Group "+groupname)
-*/
 
 	c := &ClientMeta{
 		ClientToken: configEntry.RootToken,
@@ -48,7 +45,7 @@ func (b *backend) registerGroups(ctx context.Context, req *logical.Request, data
 	}
 
 	policy_name := "groups" + "-" + groupname
-	policystr, err := c.createPolicy(configEntry, "groups", groupname, "admin",policy_name)
+	policystr, err := c.createPolicy(configEntry, "groups", groupname, "admin",policy_name,"*")
 
 	if err != nil {
 			return logical.ErrorResponse("Failed to create a policy for " + groupname+ ", " + err.Error()), err

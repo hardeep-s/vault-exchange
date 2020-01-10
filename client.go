@@ -1,0 +1,214 @@
+package main
+
+import (
+	"bytes"
+	"errors"
+	"github.com/hashicorp/vault/api"
+	"github.com/hashicorp/vault/sdk/logical"
+	"text/template"
+)
+
+
+type Policy struct {
+	RootPath, Idtype, Name,Path string
+}
+
+const admin_policy = `
+path "{{.RootPath}}/*" {capabilities = ["list"]}
+path "{{.RootPath}}/secret/data/{{.Idtype}}/{{.Name}}/group_secrets/{{.Path}}" { capabilities = ["list", "create", "read", "update","delete", "sudo"]}
+path "{{.RootPath}}/secret/metadata/{{.Idtype}}/{{.Name}}/group_secrets/{{.Path}}" { capabilities = ["list", "read", "delete"]}
+path "{{.RootPath}}/secret/metadata/{{.Idtype}}/{{.Name}}/group_grant/{{.Path}}" { capabilities = ["read"]}
+`
+
+const grant_read_only_policy = `
+path "{{.RootPath}}/secret/data/{{.Idtype}}/{{.Name}}/group_secrets/{{.Path}}" { capabilities = ["list","read"]}
+path "{{.RootPath}}/secret/metadata/{{.Idtype}}/{{.Name}}/group_secrets/{{.Path}}" { capabilities = ["list", "read"]}
+`
+ 
+const grant_write_only_policy = `
+path "{{.RootPath}}/secret/data/{{.Idtype}}/{{.Name}}/group_secrets/{{.Path}}" { capabilities = ["update"]}
+path "{{.RootPath}}/secret/metadata/{{.Idtype}}/{{.Name}}/group_secrets/{{.Path}}" { capabilities = ["delete"]}
+`
+
+const grant_read_write_policy = `
+path "{{.RootPath}}/secret/data/{{.Idtype}}/{{.Name}}/group_secrets/{{.Path}}" { capabilities = ["list","read","update"]}
+path "{{.RootPath}}/secret/metadata/{{.Idtype}}/{{.Name}}/group_secrets/{{.Path}}" { capabilities = ["list","read","delete"]}
+`
+
+type ClientMeta struct {
+	ClientToken string
+}
+
+ 
+
+// Init a client 
+func (c *ClientMeta) Client() (*api.Client, error) {
+	config := api.DefaultConfig()
+	client, err := api.NewClient(config)
+	if err == nil {
+		client.SetToken(c.ClientToken)
+	}
+	return client, err
+}
+
+//read contents from a path
+func (c *ClientMeta) read(path string) (map[string]interface{}, error) {
+	client, err := c.Client()
+	if err != nil {
+		trace.Println("Vault-Exchange PLUGIN TRACE ->Client-> read-> ",err)
+		return nil, err
+	}
+
+	r := client.NewRequest("GET", path)
+	resp, err := client.RawRequest(r)
+	if resp != nil {
+		defer resp.Body.Close()
+		if resp.StatusCode == 404 {
+			trace.Println("Vault-Exchange PLUGIN TRACE ->Client-> read->Response->404",r.URL,resp.Body)
+			return nil, nil
+		}
+	}
+	if err != nil {
+		trace.Println("Vault-Exchange PLUGIN TRACE ->Client-> read-> ",err)
+		return nil, err
+	}
+
+	var result map[string]interface{}
+	err = resp.DecodeJSON(&result)
+	return result, nil
+}
+
+//write contents to a path
+func (c *ClientMeta) write(path string, body map[string]string) error {
+	client, err := c.Client()
+	if err == nil {
+		r := client.NewRequest("PUT", path)
+		err = r.SetJSONBody(body)
+		if err == nil {
+			resp, err1 := client.RawRequest(r)
+			defer resp.Body.Close()
+			err=err1
+		}
+	}
+	return err
+}
+
+func (c *ClientMeta) delete(path string) error {
+	client, err := c.Client()
+	if err != nil {
+		trace.Println("Vault-Exchange PLUGIN TRACE ->Client-> delete-> ",err)
+		return err
+	}
+	r := client.NewRequest("DELETE", path)
+	resp, err := client.RawRequest(r)
+	if err != nil {
+		trace.Println("Vault-Exchange PLUGIN TRACE ->Client-> delete->RawRequest ",err)
+		return err
+	}
+	if resp != nil {
+		defer resp.Body.Close()
+	}
+	return err
+}
+
+//check whether the user/group has already been registered
+func (c *ClientMeta) readID(authtype, idtype, name string) (interface{}, error) {
+	result, err := c.read("/v1/auth/" + authtype + "/" + idtype + "/" + name)
+	if err != nil {
+		trace.Println("Vault-Exchange PLUGIN TRACE ->Client-> readID-> ",err)
+		return nil, err
+	}
+	if policyRaw, ok := result["data"]; ok {
+		return policyRaw, nil
+	}
+	return nil, errors.New("Error while reading ID for "+name )
+
+}
+
+func (c *ClientMeta) writeID(authtype, idtype, name string,body  map[string]string) error {
+	/*
+	body := map[string]string{
+		"policies": policy,
+	}
+	*/
+	return c.write("/v1/auth/"+authtype+"/"+idtype+"/"+name, body)
+}
+
+func (c *ClientMeta) deleteID(authtype, idtype, name string) error {
+	return c.delete("/v1/auth/" + authtype +  "/" + idtype + "/" + name)
+}
+
+func (c *ClientMeta) readToken() (interface{}, error) {
+	result, err := c.read("/v1/auth/token/lookup-self")
+	if err != nil {
+		return nil, err
+	}
+	if policyRaw, ok := result["data"]; ok {
+		return policyRaw, nil
+	}
+	return nil, errors.New("error read token data")
+
+}
+
+func (c *ClientMeta) writeSecret(configEntry *configData,path,comments string) error {
+ 	keyval := map[string]string{
+        "comments": comments,
+    }
+	rrr:=c.write("/v1/"+configEntry.RootPath+"/secret/data/groups/"+path, keyval)
+	return rrr;
+}
+
+
+func (c *ClientMeta) createPolicy(configEntry *configData, idtype, name, privileges,policy_name,path string, ) (string, error) {
+	policyMetaData := Policy{
+		RootPath: configEntry.RootPath,
+		Idtype: idtype,
+		Name: name,
+		Path: path,
+	}
+	policyData, err := template.New(policy_name).Parse(grant_read_only_policy)
+	if privileges=="admin" {
+		policyData, err = template.New(policy_name).Parse(admin_policy)
+	} else {
+		policyData, err = template.New(policy_name).Parse(grant_write_only_policy)
+	}
+	if err != nil {
+		return "", err
+	}
+	var policyObject bytes.Buffer
+	err = template.Must(policyData, err).Execute(&policyObject, policyMetaData)
+	if err != nil {
+		return "", err
+	}
+	return policyObject.String(), nil
+}
+
+//write a policy to Vault
+func (c *ClientMeta) writePolicy(name, rules string) (*logical.Response, error) {
+	client, err := c.Client()
+	if err != nil {
+		return logical.ErrorResponse("writePolicy->failed io open client"), err
+	}
+
+	if err := client.Sys().PutPolicy(name, rules); err != nil {
+		return logical.ErrorResponse("writePolicy->failed to  write policy"), err
+	}
+	return nil, nil
+}
+
+func (c *ClientMeta) deletePolicy(name string) error {
+	return	c.delete("/v1/sys/policy/"+name)
+}
+
+
+func (c *ClientMeta) listPolicies() (interface{}, error) {
+	path := "/v1/sys/policy"
+	result, err := c.read(path)
+	if err != nil {
+		return nil, err
+	}
+	if policyRaw, ok := result["data"]; ok {
+		return policyRaw, nil
+	} 
+	return nil, errors.New("error listing policies")
+}

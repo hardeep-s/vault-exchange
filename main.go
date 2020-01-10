@@ -2,8 +2,6 @@ package main
 
 import (
 	"context"
-	"bytes"
-	"errors"
 	"fmt"
 	"github.com/hashicorp/vault/api"
 	"github.com/hashicorp/vault/sdk/framework"
@@ -11,7 +9,6 @@ import (
 	"github.com/hashicorp/vault/sdk/plugin"
 	"log"
 	"os"
-	"text/template"
 )
 
 const backendHelp = ` 
@@ -20,33 +17,14 @@ The "vault-exchange" backend allows users to grant access to secrets in their ho
 var debuglevel int
 var trace *log.Logger
 
-type ClientMeta struct {
-	ClientToken string
-}
-
 type backend struct {
 	*framework.Backend
 }
 
-type Policy struct {
-	RootPath, Idtype, Name string
+type configData struct {
+	RootToken string `json:"root_token"`
+	RootPath  string `json:"root_path"`
 }
-
-const admin_policy = `
-path "{{.RootPath}}/*" {capabilities = ["list"]}
-path "{{.RootPath}}/secret/data/{{.Idtype}}/{{.Name}}/group_secrets/*" { capabilities = ["list", "create", "read", "update","delete", "sudo"]}
-path "{{.RootPath}}/secret/metadata/{{.Idtype}}/{{.Name}}/group_secrets/*" { capabilities = ["list", "read", "delete"]}
-`
-
-const read_only_policy = `
-path "{{.RootPath}}/secret/data/{{.Idtype}}/{{.Name}}/group_secrets/*" { capabilities = ["read"]}
-path "{{.RootPath}}/secret/metadata/{{.Idtype}}/{{.Name}}/group_secrets/*" { capabilities = ["list", "read"]}
-`
- 
-const write_only_policy = `
-path "{{.RootPath}}/secret/data/{{.Idtype}}/{{.Name}}/group_secrets/*" { capabilities = ["update"]}
-path "{{.RootPath}}/secret/metadata/{{.Idtype}}/{{.Name}}/group_secrets/*" { capabilities = ["update"]}
-`
  
 
 func main() {
@@ -81,7 +59,7 @@ func Backend() *backend {
 		Help: backendHelp,
 		Paths: append([]*framework.Path{
 			pathConfig(&b),
-			pathRegister(&b),
+			pathRegisterGroup(&b),
 		}),
 		BackendType: logical.TypeCredential,
 	}
@@ -101,8 +79,8 @@ func pathConfig(b *backend) *framework.Path {
 			},
 			"path": &framework.FieldSchema{
 				Type:        framework.TypeString,
-				Default:     "exchange/home",
-				Description: "root for user paths",
+				Default:     "kv",
+				Description: "secret engine root path",
 			},
 		},
 
@@ -112,9 +90,107 @@ func pathConfig(b *backend) *framework.Path {
 	}
 }
 
-type configData struct {
-	RootToken string `json:"root_token"`
-	RootPath  string `json:"root_path"`
+//configure the command used for registering a group
+func pathRegisterGroup(b *backend) *framework.Path {
+	return &framework.Path{
+		Pattern: "registergroup",
+		Fields: map[string]*framework.FieldSchema{
+			"group_name": &framework.FieldSchema{
+				Type:        framework.TypeString,
+				Description: "Group name to register",
+			},
+		},
+		Callbacks: map[logical.Operation]framework.OperationFunc{
+			logical.UpdateOperation: b.registerGroups,
+		},
+	}
+}
+
+// Grant Access  AWS Roles
+func pathGrantAWSAccess(b *backend) *framework.Path {
+	return &framework.Path{
+		Pattern: "aws/grant",
+		Fields: map[string]*framework.FieldSchema{
+			"group_name": &framework.FieldSchema{
+				Type:        framework.TypeString,
+				Default:     "",
+				Description: "Groups name needs to be granted.",
+			},
+			"path": &framework.FieldSchema{
+				Type:        framework.TypeString,
+				Default:     "/",
+				Description: "sub path in the groups_secrets to share",
+			},
+			"role_arn": &framework.FieldSchema{
+				Type:        framework.TypeString,
+				Default:     "",
+				Description: "ARN of the AWS role that will acess the path.",
+			},
+			"privilege": &framework.FieldSchema{
+				Type:        framework.TypeString,
+				Default:	"r",
+				Description: "r,w,rw, read/write privilege to the group path",
+			},
+			"ttl": &framework.FieldSchema{
+				Type:		framework.TypeString,
+				Default:	"0.5h",
+				Description: "TTL for the token your role use.",
+			},
+			"token": &framework.FieldSchema{
+				Type:        framework.TypeString,
+				Description: "vault token",
+			},
+		},
+		Callbacks: map[logical.Operation]framework.OperationFunc{
+			logical.UpdateOperation: b.grantAWSRole,
+		},
+	}
+}
+
+// Grant Access  Kubernetes Roles
+func pathGrantKubernetesAccess(b *backend) *framework.Path {
+	return &framework.Path{
+		Pattern: "kubernetes/grant",
+		Fields: map[string]*framework.FieldSchema{
+			"group_name": &framework.FieldSchema{
+				Type:        framework.TypeString,
+				Default:     "",
+				Description: "Groups name needs to be granted.",
+			},
+			"path": &framework.FieldSchema{
+				Type:        framework.TypeString,
+				Default:     "/",
+				Description: "sub path in the groups_secrets to share",
+			},
+			"service_account_name": &framework.FieldSchema{
+				Type:        framework.TypeString,
+				Default:     "",
+				Description: "Service Account Name.",
+			},
+			"service_account_namespace": &framework.FieldSchema{
+				Type:        framework.TypeString,
+				Default:     "",
+				Description: "Service Account Name namespace.",
+			},
+			"privilege": &framework.FieldSchema{
+				Type:        framework.TypeString,
+				Default:	"r",
+				Description: "r,w,rw, read/write privilege to the group path",
+			},
+			"ttl": &framework.FieldSchema{
+				Type:		framework.TypeString,
+				Default:	"0.5h",
+				Description: "TTL for the token your role use.",
+			},
+			"token": &framework.FieldSchema{
+				Type:        framework.TypeString,
+				Description: "vault token",
+			},
+		},
+		Callbacks: map[logical.Operation]framework.OperationFunc{
+			logical.UpdateOperation: b.grantKubernetesRole,
+		},
+	}
 }
 
 //write the plugin config to vault server
@@ -150,156 +226,6 @@ func (b *backend) readConfig(ctx context.Context, req *logical.Request) (*config
 		return nil, fmt.Errorf("error reading configuration: %s", err)
 	}
 	return &result, nil
-}
-
-//configure the command used for registering a group
-func pathRegister(b *backend) *framework.Path {
-	return &framework.Path{
-		Pattern: "register",
-		Fields: map[string]*framework.FieldSchema{
-			"name": &framework.FieldSchema{
-				Type:        framework.TypeString,
-				Description: "Group name to register",
-			},
-		},
-		Callbacks: map[logical.Operation]framework.OperationFunc{
-			logical.UpdateOperation: b.registerGroups,
-		},
-	}
-}
-
-
-// Init a client running as root
-func (c *ClientMeta) Client() (*api.Client, error) {
-	config := api.DefaultConfig()
-	client, err := api.NewClient(config)
-	if err == nil {
-		client.SetToken(c.ClientToken)
-	}
-	return client, err
-}
-
-//read contents from a path
-func (c *ClientMeta) read(path string) (map[string]interface{}, error) {
-	client, err := c.Client()
-	if err != nil {
-		Trace(0, "read->Client->Error", err)
-		return nil, err
-	}
-
-	r := client.NewRequest("GET", path)
-	resp, err := client.RawRequest(r)
-	if resp != nil {
-		defer resp.Body.Close()
-		if resp.StatusCode == 404 {
-			Trace(0, "read->Response->404",r.URL,resp.Body)
-			return nil, nil
-		}
-	}
-	if err != nil {
-		Trace(0, "read->Response->ERROR", err)
-		return nil, err
-	}
-
-	var result map[string]interface{}
-	err = resp.DecodeJSON(&result)
-	return result, nil
-}
-
-//write contents to a path
-func (c *ClientMeta) write(path string, body map[string]string) error {
-	client, err := c.Client()
-	if err != nil {
-		Trace(0, "write->Client->Error", err)
-		return err
-	}
-
-	r := client.NewRequest("PUT", path)
-	if err := r.SetJSONBody(body); err != nil {
-		Trace(0, "write->Response->SetJSONBody->Error", err)
-		return err
-	}
-	resp, err := client.RawRequest(r)
-	defer resp.Body.Close()
-	return err
-}
-
-//check whether the user/group has already been registered
-func (c *ClientMeta) readID(authtype, idtype, name string) (interface{}, error) {
-	result, err := c.read("/v1/auth/" + authtype + "/" + idtype + "/" + name)
-	if err != nil {
-		return nil, err
-	}
-	if policyRaw, ok := result["data"]; ok {
-		return policyRaw, nil
-	}
-	return nil, errors.New("error read identity data")
-
-}
-
-//map the policy for the user/group
-func (c *ClientMeta) writeID(authtype, idtype, name, policy string) error {
-	body := map[string]string{
-		"policies": policy,
-	}
-	return c.write("/v1/auth/"+authtype+"/"+idtype+"/"+name, body)
-}
-
-func (c *ClientMeta) readToken() (interface{}, error) {
-	result, err := c.read("/v1/auth/token/lookup")
-	if err != nil {
-		return nil, err
-	}
-	if policyRaw, ok := result["data"]; ok {
-		return policyRaw, nil
-	}
-	return nil, errors.New("error read token data")
-
-}
-
-func (c *ClientMeta) writeSecret(configEntry *configData,path,comments string) error {
- 	keyval := map[string]string{
-        "comments": comments,
-    }
-	rrr:=c.write("/v1/"+configEntry.RootPath+"/secret/data/groups/"+path, keyval)
-	return rrr;
-}
-
-
-func (c *ClientMeta) createPolicy(configEntry *configData, idtype, name, privileges,policy_name string, ) (string, error) {
-	policyMetaData := Policy{
-		RootPath: configEntry.RootPath,
-		Idtype: idtype,
-		Name: name,
-	}
-	policyData, err := template.New(policy_name).Parse(read_only_policy)
-	if privileges=="admin" {
-		policyData, err = template.New(policy_name).Parse(admin_policy)
-	} else {
-		policyData, err = template.New(policy_name).Parse(write_only_policy)
-	}
-	if err != nil {
-		return "", err
-	}
-	var policyObject bytes.Buffer
-	err = template.Must(policyData, err).Execute(&policyObject, policyMetaData)
-	if err != nil {
-		return "", err
-	}
-	return policyObject.String(), nil
-}
-
-//write a policy to Vault
-func (c *ClientMeta) writePolicy(name, rules string) (*logical.Response, error) {
-	client, err := c.Client()
-	if err != nil {
-		return logical.ErrorResponse("writePolicy->failed io open client"), err
-	}
-
-	if err := client.Sys().PutPolicy(name, rules); err != nil {
-		return logical.ErrorResponse("writePolicy->failed to  write policy"), err
-	}
-	return nil, nil
 }
 
 // Application logs print to standard output

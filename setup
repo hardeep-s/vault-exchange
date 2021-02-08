@@ -17,6 +17,11 @@ mkdir certs
 cd certs
 openssl req -x509 -out localhost.crt -keyout localhost.key   -newkey rsa:2048 -nodes -sha256   -subj '/CN=localhost' -extensions EXT -config <( \
    printf "[dn]\nCN=localhost\n[req]\ndistinguished_name = dn\n[EXT]\nsubjectAltName=DNS:localhost\nkeyUsage=digitalSignature\nextendedKeyUsage=serverAuth")
+cat certs/localhost.crt  | openssl x509 -noout -enddate
+
+openssl req -x509 -out server.crt -keyout server.key   -newkey rsa:2048 -nodes -sha256   -subj '/CN=vault.upstart.com' -extensions EXT -config <( \
+   printf "[dn]\nCN=vault.upstart.com\n[req]\ndistinguished_name = dn\n[EXT]\nsubjectAltName=DNS:vault.upstart.com\nkeyUsage=digitalSignature\nextendedKeyUsage=serverAuth")
+
 
 #*******update your hosts file to point localhost  to 127.0.0.1
 vi /etc/hosts
@@ -26,7 +31,6 @@ vi /etc/hosts
 #*******create the vault storage & plugin dir
 mkdir -p vault/data
 mkdir vault/plugin
-mkdir vault/log
 
 #*******For self signed certs set skip verify before startinng the server
 export VAULT_SKIP_VERIFY=true
@@ -72,28 +76,49 @@ path "auth/token/lookup" {
 #*********** - example onelogin SSO
 export CLIENT_ID=$$$$$$$$$$$$$$$$
 export CLIENT_SECRET=$$$$$$$$$$$$$$$
-export ENDPOINT=https://openid-connect.onelogin.com/oidc
 ~/Workspace/bin/vault write auth/oidc/config oidc_discovery_url=$ENDPOINT oidc_client_id=$CLIENT_ID oidc_client_secret=$CLIENT_SECRET default_role="onelogin"
  ~/Workspace/bin/vault write auth/oidc/role/onelogin bound_audiences="$CLIENT_ID" allowed_redirect_uris="https://localhost:8200/ui/vault/auth/oidc/oidc/callback" user_claim="preferred_username" groups_claim="groups" oidc_scopes="groups"  policies="default"
 
+#*********** - example OKTA SSO
+export CLIENT_ID=$$$$$$$$$$$$$$$$
+export CLIENT_SECRET=$$$$$$$$$$$$$$$
+export ENDPOINT=https://upstart.okta.com/oauth2/$$$$$$$$$$$$$$$$
+~/Workspace/bin/vault write auth/oidc/config oidc_discovery_url=$ENDPOINT oidc_client_id=$CLIENT_ID oidc_client_secret=$CLIENT_SECRET default_role="okta"
+~/Workspace/bin/vault write auth/oidc/role/okta -<<EOF
+{
+"user_claim": "name",
+"bound_audiences": ["api://vault","$CLIENT_ID"],
+"allowed_redirect_uris": "https://localhost:8200/ui/vault/auth/oidc/oidc/callback",
+"role_type": "oidc",
+"oidc_scopes": ["profile","openid"],
+"groups_claim" : "groups",
+"policies": "default"
+}
+EOF
+
+
+
 #*******Setup the plugin
+mkdir vault/plugin
+mkdir vault/log
 cp vault-exchange vault/plugin
 export SHA256=$(shasum -a 256 vault/plugin/vault-exchange | cut -d' ' -f1)
 ~/Workspace/bin/vault auth disable exchange 
 ~/Workspace/bin/vault write sys/plugins/catalog/vault-exchange  sha_256="${SHA256}" command="vault-exchange" 
+# Ignore warning message in logs
 ~/Workspace/bin/vault auth enable -path=exchange  -plugin-name=vault-exchange plugin 
 ~/Workspace/bin/vault plugin list  | grep vault-exchange
 ~/Workspace/bin/vault write auth/exchange/config display_name=exchange path=kv token=$admintoken 
 
 #*****************Register Groups
 #*************Login from UI using OIDC and your SSO. Copy the vault token and use it in the next commans
-~/Workspace/bin/vault login  login token=$copied_token-here
-~/Workspace/bin/vault write auth/exchange/registergroup  group_name="Your SSO group Name Here" 
+~/Workspace/bin/vault login  << $copied_token-here
+~/Workspace/bin/vault write auth/exchange/registergroup  group_name="Your SSO group Name Here" token=$copied_token-here 
 # ********** This step will create the following  path "kv/secret/data/groups/Infosec/group_secrets/"
 
 #*************** Enable AWS Authentication
 ~/Workspace/bin/vault auth enable aws  
-~/Workspace/bin/vault write auth/aws/config/client secret_key=$AWS_VAULT_USER_SECRETj access_key=$AWS_VAULT_USER_ID
+~/Workspace/bin/vault write auth/aws/config/client secret_key=$AWS_VAULT_USER_SECRET access_key=$AWS_VAULT_USER_ID
 
 #~/Workspace/bin/vault write auth/aws/role/dev-role-iam auth_type=iam bound_iam_principal_arn=arn:aws:iam::123456789012:role/MyRole policies=prod,dev max_ttl=500h
 

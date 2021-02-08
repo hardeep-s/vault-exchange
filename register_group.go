@@ -21,7 +21,7 @@ func (b *backend) registerGroups(ctx context.Context, req *logical.Request, data
 		return logical.ErrorResponse("failed to read config"), err
 	}
 	groupname := data.Get("group_name").(string)
-	trace.Println("Vault-Exchange PLUGIN TRACE -> ","registerGroups-> ",req.DisplayName,req.ControlGroup,auth,user, groupname)
+	trace.Println("Vault-Exchange PLUGIN TRACE ->register_group ","registerGroups-> ",req.DisplayName,req.ControlGroup,auth,user, groupname)
 
 	rc := &ClientMeta{
 		ClientToken: data.Get("token").(string),

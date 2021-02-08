@@ -95,6 +95,10 @@ func pathRegisterGroup(b *backend) *framework.Path {
 	return &framework.Path{
 		Pattern: "registergroup",
 		Fields: map[string]*framework.FieldSchema{
+			"token": &framework.FieldSchema{
+				Type:        framework.TypeString,
+				Description: "user token needed to check groups",
+			},
 			"group_name": &framework.FieldSchema{
 				Type:        framework.TypeString,
 				Description: "Group name to register",

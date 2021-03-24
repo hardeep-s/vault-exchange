@@ -80,9 +80,11 @@ export CLIENT_SECRET=$$$$$$$$$$$$$$$
  ~/Workspace/bin/vault write auth/oidc/role/onelogin bound_audiences="$CLIENT_ID" allowed_redirect_uris="https://localhost:8200/ui/vault/auth/oidc/oidc/callback" user_claim="preferred_username" groups_claim="groups" oidc_scopes="groups"  policies="default"
 
 #*********** - example OKTA SSO
-export CLIENT_ID=$$$$$$$$$$$$$$$$
-export CLIENT_SECRET=$$$$$$$$$$$$$$$
-export ENDPOINT=https://upstart.okta.com/oauth2/$$$$$$$$$$$$$$$$
+export API_TOKEN=$$$$$$$$$$$$$$$ //Token to read group information from OIDC server
+export API_URL=https://upstart.okta.com/api/v1 
+export CLIENT_ID=$$$$$$$$$$$$$$$$ //OKTA OIDC Client ID for Vault
+export CLIENT_SECRET=$$$$$$$$$$$$$$$ //OKTA OIDC Client Secret for Vault
+export ENDPOINT=https://upstart.okta.com/oauth2/$$$$$$$$$$$$$$$$ //OKTA OIDC Authorization Server For Vault
 ~/Workspace/bin/vault write auth/oidc/config oidc_discovery_url=$ENDPOINT oidc_client_id=$CLIENT_ID oidc_client_secret=$CLIENT_SECRET default_role="okta"
 ~/Workspace/bin/vault write auth/oidc/role/okta -<<EOF
 {
@@ -96,28 +98,70 @@ export ENDPOINT=https://upstart.okta.com/oauth2/$$$$$$$$$$$$$$$$
 }
 EOF
 
+#************* Setup PKI **************************
+~/Workspace/bin/vault  secrets enable pki
+~/Workspace/bin/vault  secrets move pki upstart-client
+~/Workspace/bin/vault  secrets enable pki
+~/Workspace/bin/vault  secrets move pki upstart-server
+~/Workspace/bin/vault  secrets list
+
+~/Workspace/bin/vault  secrets tune -max-lease-ttl=8760h upstart-client
+~/Workspace/bin/vault  secrets tune -max-lease-ttl=8760h upstart-server
+
+~/Workspace/bin/vault write upstart-client/root/generate/internal common_name=upstart.com ttl=8760h
+~/Workspace/bin/vault write upstart-server/root/generate/internal common_name=upstart.com ttl=8760h
+
+~/Workspace/bin/vault write upstart-client/config/urls issuing_certificates="https://localhost:8200/v1/upstart-client/ca" crl_distribution_points="https://localhost:8200/v1/upstart-client/crl"
+~/Workspace/bin/vault write upstart-server/config/urls issuing_certificates="https://localhost:8200/v1/upstart-server/ca" crl_distribution_points="https://localhost:8200/v1/upstart-server/crl"
+
+~/Workspace/bin/vault write upstart-client/roles/issuecerts allow_any_name=true allowed_domains=upstart.com allow_subdomains=true max_ttl=24h client_flag=true server_flag=false
+~/Workspace/bin/vault write upstart-server/roles/issuecerts  allowed_domains=upstart.com allow_subdomains=true max_ttl=8760h client_flag=false server_flag=true
+  
+
+
+~/Workspace/bin/vault read  upstart-client/roles/upstart-com 
+~/Workspace/bin/vault list  upstart-client/certs
+~/Workspace/bin/vault read  upstart-client/config/urls
+~/Workspace/bin/vault write  upstart-client/tidy safety_buffer="8h"
+
+
+~/Workspace/bin/vault write upstart-client/config/ca pem_bundle(private_key+public_key)
+~/Workspace/bin/vault write upstart-client/issue/issuecerts  common_name="hardeep.singh"
+openssl x509 -in /tmp/cert.pem -text
+
+vi csr.conf
+openssl req -new -key self-ssl.key -out self-ssl.csr -config csr.conf
+openssl req -in self-ssl.csr -text -noout
+~/Workspace/bin/vault write pki/sign-verbatim/upstart-com  csr=@/Users/hardeepsingh/Workspace/security/vault-exchange/self-ssl.csr 
 
 
 #*******Setup the plugin
 mkdir vault/plugin
 mkdir vault/log
+
+go build
+rm vault/log/vault-exchange.log 
 cp vault-exchange vault/plugin
 export SHA256=$(shasum -a 256 vault/plugin/vault-exchange | cut -d' ' -f1)
+~/Workspace/bin/vault login $admintoken 
 ~/Workspace/bin/vault auth disable exchange 
 ~/Workspace/bin/vault write sys/plugins/catalog/vault-exchange  sha_256="${SHA256}" command="vault-exchange" 
-# Ignore warning message in logs
 ~/Workspace/bin/vault auth enable -path=exchange  -plugin-name=vault-exchange plugin 
 ~/Workspace/bin/vault plugin list  | grep vault-exchange
-~/Workspace/bin/vault write auth/exchange/config display_name=exchange path=kv token=$admintoken 
+~/Workspace/bin/vault write auth/exchange/setup display_name=exchange root_path=kv root_token=$admintoken  admin_group="VAULT_admins" client_certs="upstart-client/issue/issuecerts" server_certs="upstart-server/issue/issuecerts"
+~/Workspace/bin/vault write auth/exchange/config/authz api_token=$API_TOKEN api_url=$API_URL 
 
+
+#Login from UI using OIDC and your SSO. Use the console in the UI to make the call
 #*****************Register Groups
-#*************Login from UI using OIDC and your SSO. Copy the vault token and use it in the next commans
-~/Workspace/bin/vault login  << $copied_token-here
-~/Workspace/bin/vault write auth/exchange/registergroup  group_name="Your SSO group Name Here" token=$copied_token-here 
+write auth/exchange/group  name="Your SSO group Name Here" 
 # ********** This step will create the following  path "kv/secret/data/groups/Infosec/group_secrets/"
+#*****************Generate Cert
+write auth/exchange/create/clientcert  type="X509"
+#copy data field to file /tmp/cert and then call : cat /tmp/cert jq | awk '{gsub(/\\n/,"\n")}1'
 
 #*************** Enable AWS Authentication
-~/Workspace/bin/vault auth enable aws  
+~/Workspace/bin/vault auth enable aws 
 ~/Workspace/bin/vault write auth/aws/config/client secret_key=$AWS_VAULT_USER_SECRET access_key=$AWS_VAULT_USER_ID
 
 #~/Workspace/bin/vault write auth/aws/role/dev-role-iam auth_type=iam bound_iam_principal_arn=arn:aws:iam::123456789012:role/MyRole policies=prod,dev max_ttl=500h
@@ -148,5 +192,7 @@ vault write auth/kubernetes/config token_reviewer_jwt="reviewer_service_account_
 ~/Workspace/bin/vault path-help  entity
 ~/Workspace/bin/vault list identity/group/name
 ~/Workspace/bin/vault list sys/policy
+~/Workspace/bin/vault read sys/policy/....
 ~/Workspace/bin/vault  kv list kv/
+~/Workspace/bin/vault  kv list kv/secret/data/groups/
 ~/Workspace/bin/vault  secrets list -detailed

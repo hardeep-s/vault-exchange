@@ -5,13 +5,26 @@ import (
 	"errors"
 	"github.com/hashicorp/vault/api"
 	"github.com/hashicorp/vault/sdk/logical"
+	"net/http"
+    "io/ioutil"
 	"text/template"
+	//"runtime/debug"
 )
 
 
 type Policy struct {
-	RootPath, Idtype, Name,Path string
+	RootPath, Idtype, Name, Path, ServerCertPath string
 }
+const super_admin_policy = `
+path "v1/auth/exchange/config/authz" {capabilities = ["read","update"]}
+path "v1/auth/exchange/grant" {capabilities = ["read","update","delete"]}
+path "v1/{{.ServerCertPath}}/*" {capabilities = ["read","update","delete"]}
+//path "v1/upstart-server/*" {capabilities = ["read","update","delete"]}
+path "{{.RootPath}}/*" {capabilities = ["list"]}
+path "{{.RootPath}}/secret/data/{{.Idtype}}/{{.Name}}/group_secrets/{{.Path}}" { capabilities = ["list", "create", "read", "update","delete", "sudo"]}
+path "{{.RootPath}}/secret/metadata/{{.Idtype}}/{{.Name}}/group_secrets/{{.Path}}" { capabilities = ["list", "read", "delete"]}
+path "{{.RootPath}}/secret/metadata/{{.Idtype}}/{{.Name}}/group_grant/{{.Path}}" { capabilities = ["read"]}
+`
 
 const admin_policy = `
 path "{{.RootPath}}/*" {capabilities = ["list"]}
@@ -51,6 +64,43 @@ func (c *ClientMeta) Client() (*api.Client, error) {
 	return client, err
 }
 
+//read contents from an external URL
+// CMD="GET","PUT","POST"
+func (c *ClientMeta) REST(cmd,url,token string,  body []byte) ([] byte, error) {
+    req, err := http.NewRequest(cmd, url, bytes.NewBuffer(body))
+    if err != nil {
+		trace.Println("Vault-Exchange PLUGIN TRACE ->Client-> REST-> ",err)
+		return nil,err
+	}
+	req.Header.Add("Accept", "application/json")
+	req.Header.Add("Content-Type", "application/json")
+	if token !="" {
+	    req.Header.Add("Authorization", token)
+	}
+	if body!= nil {
+	    req.Header.Add("Content-Length", string(len(body)))
+	}
+
+    client := &http.Client{}
+	/*
+	client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+        for key, val := range via[0].Header {
+            req.Header[key] = val
+		trace.Println("Vault-Exchange PLUGIN TRACE ->FFFFFFFFFFFFFFFFF ",key,"=",val)
+        }
+        return err
+    }
+	*/
+    resp, err := client.Do(req)
+    if err != nil {
+		trace.Println("Vault-Exchange PLUGIN TRACE ->Client-> REST-> ",err)
+		return nil,err
+    } else {
+        defer resp.Body.Close()
+        return  ioutil.ReadAll(resp.Body)
+    }
+}
+
 //read contents from a path
 func (c *ClientMeta) read(path string) (map[string]interface{}, error) {
 	client, err := c.Client()
@@ -69,6 +119,7 @@ func (c *ClientMeta) read(path string) (map[string]interface{}, error) {
 		}
 	}
 	if err != nil {
+		//debug.PrintStack()
 		trace.Println("Vault-Exchange PLUGIN TRACE ->Client-> read-> ",err)
 		return nil, err
 	}
@@ -80,17 +131,30 @@ func (c *ClientMeta) read(path string) (map[string]interface{}, error) {
 
 //write contents to a path
 func (c *ClientMeta) write(path string, body map[string]string) error {
+	_,err:= c.writeCmd("PUT",path , body )
+	return err;
+}
+func (c *ClientMeta) writeCmd(cmd,path string, body map[string]string) (map[string]interface{}, error)  {
 	client, err := c.Client()
 	if err == nil {
-		r := client.NewRequest("PUT", path)
+		r := client.NewRequest(cmd, path)
 		err = r.SetJSONBody(body)
 		if err == nil {
-			resp, err1 := client.RawRequest(r)
+			resp, _ := client.RawRequest(r)
+			if resp != nil {
+				defer resp.Body.Close()
+				if resp.StatusCode == 404 {
+					trace.Println("Vault-Exchange PLUGIN TRACE ->Client-> writeCmd->Response->404",r.URL,resp.Body)
+					return nil, nil
+				}
+			}
 			defer resp.Body.Close()
-			err=err1
+			var result map[string]interface{}
+			err = resp.DecodeJSON(&result)
+			return result, nil
 		}
 	}
-	return err
+	return nil,err
 }
 
 func (c *ClientMeta) delete(path string) error {
@@ -162,12 +226,15 @@ func (c *ClientMeta) writeSecret(configEntry *configData,path,comments string) e
 func (c *ClientMeta) createPolicy(configEntry *configData, idtype, name, privileges,policy_name,path string, ) (string, error) {
 	policyMetaData := Policy{
 		RootPath: configEntry.RootPath,
+		ServerCertPath: configEntry.ServerCertPath,
 		Idtype: idtype,
 		Name: name,
 		Path: path,
 	}
 	policyData, err := template.New(policy_name).Parse(grant_read_only_policy)
-	if privileges=="admin" {
+	if privileges=="su" {
+		policyData, err = template.New(policy_name).Parse(super_admin_policy)
+	} else if privileges=="admin" {
 		policyData, err = template.New(policy_name).Parse(admin_policy)
 	} else {
 		policyData, err = template.New(policy_name).Parse(grant_write_only_policy)
@@ -189,6 +256,7 @@ func (c *ClientMeta) writePolicy(name, rules string) (*logical.Response, error) 
 	if err != nil {
 		return logical.ErrorResponse("writePolicy->failed io open client"), err
 	}
+	trace.Println("Vault-Exchange PLUGIN TRACE ->client ","writePolicy-> ", name, rules)
 
 	if err := client.Sys().PutPolicy(name, rules); err != nil {
 		return logical.ErrorResponse("writePolicy->failed to  write policy"), err

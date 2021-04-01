@@ -21,14 +21,17 @@ func (b *backend) registerGroups(ctx context.Context, req *logical.Request, data
 	}
 	groups,errgroups:=b.listGroups(ctx,req,user)
 	if errgroups !=nil {
-		trace.Println("Vault-Exchange PLUGIN TRACE ->register_group ","registerGroups-> GROUOP LIST ERROR",errgroups,groups)
+		trace.Println("Vault-Exchange PLUGIN TRACE ->register_group ","registerGroups-> GROUP LIST ERROR",errgroups,groups)
+	}
+	if groups[groupname]==nil {
+		return logical.ErrorResponse("You can only register a group that you belong to "), errors.New("You can only register a group that you belong to")
 	}
 	return b.addGroups(groupname,"admin",ctx,req,data)
 }
 
 //add  group includes creating  a path and corresponding policy for the group
 func (b *backend) addGroups(groupname,privileges string,ctx context.Context, req *logical.Request, data *framework.FieldData) (*logical.Response, error) {
-	trace.Println("Vault-Exchange PLUGIN TRACE ->register_group ","addGroups-> ", groupname,privileges)
+	//trace.Println("Vault-Exchange PLUGIN TRACE ->register_group ","addGroups-> ", groupname,privileges)
 	configEntry, err := b.readConfig(ctx, req)
 	if err != nil {
 		return logical.ErrorResponse("failed to read config"), err
@@ -52,7 +55,7 @@ func (b *backend) addGroups(groupname,privileges string,ctx context.Context, req
 		}
 		c.writeSecret(configEntry,groupname+"/group_secrets/donot_remove","Do not remove this key val")
 	} else if grouperr == nil && groupInfo != nil{
-		return logical.ErrorResponse(groupname + "is already registered"), err
+		return logical.ErrorResponse(groupname + " is already registered"), err
 	}
 
 	return c.writePolicy(policy_name, policystr)
@@ -60,7 +63,7 @@ func (b *backend) addGroups(groupname,privileges string,ctx context.Context, req
 
 
 //get groups list from directory service
-func (b *backend) listGroups(ctx context.Context, req *logical.Request,user string) (map[string]string, error) {
+func (b *backend) listGroups(ctx context.Context, req *logical.Request,user string) (map[string](map[string]interface{}), error) {
 	configEntry, err := b.readConfig(ctx, req)
 	c := &ClientMeta{
 		ClientToken: configEntry.RootToken,
@@ -69,7 +72,6 @@ func (b *backend) listGroups(ctx context.Context, req *logical.Request,user stri
 	url:=configEntry.APIURL+"/users/"+string(user)+"/groups"
 	token:= "SSWS "+configEntry.APIToken
 	//OKTA
-	trace.Println("Vault-Exchange PLUGIN TRACE ->register_group ","listGroups-> ",url)
 
 	grouplist,err :=c.REST("GET",url,token,nil ) 	
 	if err!=nil {
@@ -77,15 +79,22 @@ func (b *backend) listGroups(ctx context.Context, req *logical.Request,user stri
 		return nil, err
 	}
 
-	trace.Println("KKKKKKKKKKKKKKKKKKK ->Vault-Exchange PLUGIN TRACE -> ","registerGroups-> ",string(grouplist))
 	var groups [] map[string]interface{}
 	json.Unmarshal(grouplist, &groups)
-	trace.Println("KKKKKKKKKKKKKKKKKKK ->Vault-Exchange PLUGIN TRACE -> ","registerGroups-> ",groups,len(groups))
-    var list map[string]string
-	list = make(map[string]string)
+    var list map[string](map[string]interface{})
+	list = make(map[string](map[string]interface{}))
 	for i:=0; i<len(groups);i++ {
-		for key, value := range groups[i] {
-  			trace.Println("AAAAAAAAA ->Vault-Exchange PLUGIN TRACE -> ",key, value.(string))
+		var onegroup=groups[i]
+		for key, value := range onegroup {
+  			if(key=="profile")  {
+				myMap := value.(map[string]interface{})
+				for k, val := range myMap {
+					if(k=="name") {
+						name:=val.(string)
+						list[name]=myMap
+					}
+				}
+			}
 		}
 	}
 	return  list,nil

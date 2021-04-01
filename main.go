@@ -66,7 +66,7 @@ func Backend() *backend {
 		Help: backendHelp,
 		Paths: append([]*framework.Path{
 			pathConfig(&b),
-			authzConfig(&b),
+			pathAuthZConfig(&b),
 			pathEnableGroupToAccessPath(&b),
 			pathSignCerts(&b),
 			pathAddGroup(&b),
@@ -114,8 +114,7 @@ func pathConfig(b *backend) *framework.Path {
 	}
 }
 
-
-func authzConfig(b *backend) *framework.Path {
+func pathAuthZConfig(b *backend) *framework.Path {
 	return &framework.Path{
 		Pattern: "config/authz",
 		Fields: map[string]*framework.FieldSchema{
@@ -135,10 +134,6 @@ func authzConfig(b *backend) *framework.Path {
 	}
 }
 
-
-
-
-//configure the command used for registering a group
 func pathSignCerts(b *backend) *framework.Path {
 	return &framework.Path{
 		Pattern: "create/clientcert",
@@ -194,7 +189,7 @@ func pathEnableGroupToAccessPath(b *backend) *framework.Path {
 // Grant Access  AWS Roles
 func pathGrantAWSAccess(b *backend) *framework.Path {
 	return &framework.Path{
-		Pattern: "grant/access/awsrole",
+		Pattern: "grant/access/aws",
 		Fields: map[string]*framework.FieldSchema{
 			"path": &framework.FieldSchema{
 				Type:        framework.TypeString,

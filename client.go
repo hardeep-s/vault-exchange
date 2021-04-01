@@ -13,7 +13,7 @@ import (
 
 
 type Policy struct {
-	RootPath, Idtype, Name, Path, ServerCertPath string
+	RootPath, Idtype, Name, Path, ServerCertPath, ClientCertPath string
 }
 const super_admin_policy = `
 path "v1/auth/exchange/config/authz" {capabilities = ["read","update"]}
@@ -27,6 +27,7 @@ path "{{.RootPath}}/secret/metadata/{{.Idtype}}/{{.Name}}/group_grant/{{.Path}}"
 `
 
 const admin_policy = `
+path "v1/{{.ClientCertPath}}/*" {capabilities = ["read","update","delete"]}
 path "{{.RootPath}}/*" {capabilities = ["list"]}
 path "{{.RootPath}}/secret/data/{{.Idtype}}/{{.Name}}/group_secrets/{{.Path}}" { capabilities = ["list", "create", "read", "update","delete", "sudo"]}
 path "{{.RootPath}}/secret/metadata/{{.Idtype}}/{{.Name}}/group_secrets/{{.Path}}" { capabilities = ["list", "read", "delete"]}
@@ -227,6 +228,7 @@ func (c *ClientMeta) createPolicy(configEntry *configData, idtype, name, privile
 	policyMetaData := Policy{
 		RootPath: configEntry.RootPath,
 		ServerCertPath: configEntry.ServerCertPath,
+		ClientCertPath: configEntry.ClientCertPath,
 		Idtype: idtype,
 		Name: name,
 		Path: path,

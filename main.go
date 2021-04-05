@@ -67,9 +67,9 @@ func Backend() *backend {
 		Paths: append([]*framework.Path{
 			pathConfig(&b),
 			pathAuthZConfig(&b),
-			pathEnableGroupToAccessPath(&b),
-			pathSignCerts(&b),
-			pathAddGroup(&b),
+			pathSignClientCert(&b),
+			pathRegisterGroup(&b),
+			pathGrantGroupAccess(&b),
 		}),
 		BackendType: logical.TypeCredential,
 	}
@@ -77,8 +77,7 @@ func Backend() *backend {
 }
 
 
-//Parameters used for configuring this plugin. 
-//It needs authentication method, path of registration as well as root token
+//Call to configure the plugin
 func pathConfig(b *backend) *framework.Path {
 	return &framework.Path{
 		Pattern: "setup",
@@ -114,6 +113,7 @@ func pathConfig(b *backend) *framework.Path {
 	}
 }
 
+//Call to configure OIDC API calls for group info
 func pathAuthZConfig(b *backend) *framework.Path {
 	return &framework.Path{
 		Pattern: "config/authz",
@@ -134,24 +134,56 @@ func pathAuthZConfig(b *backend) *framework.Path {
 	}
 }
 
-func pathSignCerts(b *backend) *framework.Path {
+//Call to Sign Certificates
+func pathSignClientCert(b *backend) *framework.Path {
 	return &framework.Path{
-		Pattern: "create/clientcert",
+		Pattern: "cert/client/create",
 		Fields: map[string]*framework.FieldSchema{
 			"type": &framework.FieldSchema{
 				Type:        framework.TypeString,
 				Default:     "x509",
 				Description: "Type X509 or SSH",
 			},
+			"ttl": &framework.FieldSchema{
+				Type:		framework.TypeString,
+				Default:	"18h",
+				Description: "duration for which the cert will be valid",
+			},
+			"ips": &framework.FieldSchema{
+				Type:		framework.TypeString,
+				Default:	"",
+				Description: "comma seperated list of source IP's from where the SSH cert is valid",
+			},
 		},
 		Callbacks: map[logical.Operation]framework.OperationFunc{
-			logical.UpdateOperation: b.generateCert,
+			logical.UpdateOperation: b.generateClientCert,
+		},
+	}
+}
+
+//Call to Sign Certificates
+func pathSignServerCert(b *backend) *framework.Path {
+	return &framework.Path{
+		Pattern: "cert/server/create",
+		Fields: map[string]*framework.FieldSchema{
+			"name": &framework.FieldSchema{
+				Type:        framework.TypeString,
+				Description: "subdomain name",
+			},
+			"ttl": &framework.FieldSchema{
+				Type:		framework.TypeString,
+				Default:	"8760h",
+				Description: "duration for which the cert will be valid",
+			},
+		},
+		Callbacks: map[logical.Operation]framework.OperationFunc{
+			logical.UpdateOperation: b.generateServerCert,
 		},
 	}
 }
 
 //configure the command used for registering a group
-func pathAddGroup(b *backend) *framework.Path {
+func pathRegisterGroup(b *backend) *framework.Path {
 	return &framework.Path{
 		Pattern: "register/group",
 		Fields: map[string]*framework.FieldSchema{
@@ -166,39 +198,44 @@ func pathAddGroup(b *backend) *framework.Path {
 	}
 }
 
-//configure the command used for registering a group
-func pathEnableGroupToAccessPath(b *backend) *framework.Path {
+//Call to grant access to another group
+func pathGrantGroupAccess(b *backend) *framework.Path {
 	return &framework.Path{
 		Pattern: "grant/access/group",
 		Fields: map[string]*framework.FieldSchema{
-			"name": &framework.FieldSchema{
-				Type:        framework.TypeString,
-				Description: "Group name to register",
-			},
-			"path": &framework.FieldSchema{
-				Type:        framework.TypeString,
-				Description: "Group name to register",
-			},
-		},
-		Callbacks: map[logical.Operation]framework.OperationFunc{
-			logical.UpdateOperation: b.registerGroups,
-		},
-	}
-}
-
-// Grant Access  AWS Roles
-func pathGrantAWSAccess(b *backend) *framework.Path {
-	return &framework.Path{
-		Pattern: "grant/access/aws",
-		Fields: map[string]*framework.FieldSchema{
-			"path": &framework.FieldSchema{
-				Type:        framework.TypeString,
-				Description: "group path in the groups_secrets to share",
-			},
 			"privilege": &framework.FieldSchema{
 				Type:        framework.TypeString,
 				Default:	"r",
 				Description: "r,w,rw, read/write privilege to the group path",
+			},
+			"path": &framework.FieldSchema{
+				Type:        framework.TypeString,
+				Description: "Path in the target group to which access will be granted. Start with the groupname",
+			},
+			"name": &framework.FieldSchema{
+				Type:        framework.TypeString,
+				Description: "Name of the source group that will be granted access",
+			},
+		},
+		Callbacks: map[logical.Operation]framework.OperationFunc{
+			logical.UpdateOperation: b.grantGroupAccess,
+		},
+	}
+}
+
+// Call to grant access to an  AWS Role
+func pathGrantAWSAccess(b *backend) *framework.Path {
+	return &framework.Path{
+		Pattern: "grant/access/aws",
+		Fields: map[string]*framework.FieldSchema{
+			"privilege": &framework.FieldSchema{
+				Type:        framework.TypeString,
+				Default:	"r",
+				Description: "r,w,rw, read/write privilege to the group path",
+			},
+			"path": &framework.FieldSchema{
+				Type:        framework.TypeString,
+				Description: "group path in the groups_secrets to share",
 			},
 			"role_arn": &framework.FieldSchema{
 				Type:        framework.TypeString,
@@ -216,7 +253,7 @@ func pathGrantAWSAccess(b *backend) *framework.Path {
 	}
 }
 
-// Grant Access  Kubernetes Roles
+// Call to grant access to an  Kubernets namespaces
 func pathGrantKubernetesAccess(b *backend) *framework.Path {
 	return &framework.Path{
 		Pattern: "grant/access/kubernetes",
@@ -318,6 +355,7 @@ func (b *backend) readConfig(ctx context.Context, req *logical.Request) (*config
 	return &result, nil
 }
 
+// ******************************public API's *********************************** 
 // Application logs print to standard output
 func Trace(level int, args ...interface{}) {
 	if level <= debuglevel {

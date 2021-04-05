@@ -19,11 +19,11 @@ func (b *backend) registerGroups(ctx context.Context, req *logical.Request, data
     if groupname == "" {
 		return logical.ErrorResponse("You need to provide  name for the group"), errors.New("You need to provide  name for the group")
 	}
-	groups,errgroups:=b.listGroups(ctx,req,user)
-	if errgroups !=nil {
-		trace.Println("Vault-Exchange PLUGIN TRACE ->register_group ","registerGroups-> GROUP LIST ERROR",errgroups,groups)
+	found,err:=b.checkIfMyGroup(ctx,req,user,groupname)
+	if err !=nil {
+		return logical.ErrorResponse("Error while fetching group info "), err
 	}
-	if groups[groupname]==nil {
+	if found==false {
 		return logical.ErrorResponse("You can only register a group that you belong to "), errors.New("You can only register a group that you belong to")
 	}
 	return b.addGroups(groupname,"admin",ctx,req,data)
@@ -47,18 +47,27 @@ func (b *backend) addGroups(groupname,privileges string,ctx context.Context, req
 			return logical.ErrorResponse("Failed to create a policy for " + groupname+ ", " + err.Error()), err
 	}
 
-	groupInfo, grouperr := c.read("/v1/identity/group/name/" + groupname)
+	groupInfo, err := c.read("/v1/identity/group/name/" + groupname)
+
 	if(groupInfo == nil){
 		err = c.createGroup(groupname, policy_name)
 		if err != nil {
 			return logical.ErrorResponse("Failed to create group ",groupname, err.Error()), err
 		}
 		c.writeSecret(configEntry,groupname+"/group_secrets/donot_remove","Do not remove this key val")
-	} else if grouperr == nil && groupInfo != nil{
-		return logical.ErrorResponse(groupname + " is already registered"), err
 	}
 
 	return c.writePolicy(policy_name, policystr)
+}
+
+ 
+func (b *backend) checkIfMyGroup(ctx context.Context, req *logical.Request,user,groupname string) (bool, error) {
+	groups,err:=b.listGroups(ctx,req,user)
+	if err !=nil {
+		trace.Println("Vault-Exchange PLUGIN TRACE ->register_group ","registerGroups-> GROUP LIST ERROR",err,groups)
+		return false, err
+	}
+	return groups[groupname]!=nil,nil
 }
 
 

@@ -16,37 +16,41 @@ type Policy struct {
 	RootPath, Idtype, Name, Path, ServerCertPath, ClientCertPath string
 }
 const super_admin_policy = `
+path "v1/{{.ServerCertPath}}/*" {capabilities = ["read","update","delete"]}
+path "v1/{{.ClientCertPath}}/*" {capabilities = ["read","update","delete"]}
+path "v1/auth/exchange/cert/*" {capabilities = ["read","update","delete","list"]}
 path "v1/auth/exchange/config/authz" {capabilities = ["read","update"]}
 path "v1/auth/exchange/grant" {capabilities = ["read","update","delete"]}
-path "v1/{{.ServerCertPath}}/*" {capabilities = ["read","update","delete"]}
-//path "v1/upstart-server/*" {capabilities = ["read","update","delete"]}
+path "sys/policy/*" {capabilities = ["list","read"]}
+path "identity/*" {capabilities = ["list","read"]}
 path "{{.RootPath}}/*" {capabilities = ["list"]}
 path "{{.RootPath}}/secret/data/{{.Idtype}}/{{.Name}}/group_secrets/{{.Path}}" { capabilities = ["list", "create", "read", "update","delete", "sudo"]}
-path "{{.RootPath}}/secret/metadata/{{.Idtype}}/{{.Name}}/group_secrets/{{.Path}}" { capabilities = ["list", "read", "delete"]}
+path "{{.RootPath}}/secret/metadata/{{.Idtype}}/{{.Name}}/group_access/{{.Path}}" { capabilities = ["list", "read", "delete"]}
 path "{{.RootPath}}/secret/metadata/{{.Idtype}}/{{.Name}}/group_grant/{{.Path}}" { capabilities = ["read"]}
 `
 
-const admin_policy = `
-path "v1/{{.ClientCertPath}}/*" {capabilities = ["read","update","delete"]}
+const group_admin_policy = `
+path "v1/auth/exchange/grant/access/*" {capabilities = ["update"]}
+path "v1/auth/exchange/cert/client/*" {capabilities = ["update"]}
 path "{{.RootPath}}/*" {capabilities = ["list"]}
 path "{{.RootPath}}/secret/data/{{.Idtype}}/{{.Name}}/group_secrets/{{.Path}}" { capabilities = ["list", "create", "read", "update","delete", "sudo"]}
-path "{{.RootPath}}/secret/metadata/{{.Idtype}}/{{.Name}}/group_secrets/{{.Path}}" { capabilities = ["list", "read", "delete"]}
+path "{{.RootPath}}/secret/metadata/{{.Idtype}}/{{.Name}}/group_access/{{.Path}}" { capabilities = ["list", "read", "delete"]}
 path "{{.RootPath}}/secret/metadata/{{.Idtype}}/{{.Name}}/group_grant/{{.Path}}" { capabilities = ["read"]}
 `
 
 const grant_read_only_policy = `
 path "{{.RootPath}}/secret/data/{{.Idtype}}/{{.Name}}/group_secrets/{{.Path}}" { capabilities = ["list","read"]}
-path "{{.RootPath}}/secret/metadata/{{.Idtype}}/{{.Name}}/group_secrets/{{.Path}}" { capabilities = ["list", "read"]}
+path "{{.RootPath}}/secret/metadata/{{.Idtype}}/{{.Name}}/group_access/{{.Path}}" { capabilities = ["list", "read"]}
 `
  
 const grant_write_only_policy = `
 path "{{.RootPath}}/secret/data/{{.Idtype}}/{{.Name}}/group_secrets/{{.Path}}" { capabilities = ["update"]}
-path "{{.RootPath}}/secret/metadata/{{.Idtype}}/{{.Name}}/group_secrets/{{.Path}}" { capabilities = ["delete"]}
+path "{{.RootPath}}/secret/metadata/{{.Idtype}}/{{.Name}}/group_access/{{.Path}}" { capabilities = ["delete"]}
 `
 
 const grant_read_write_policy = `
 path "{{.RootPath}}/secret/data/{{.Idtype}}/{{.Name}}/group_secrets/{{.Path}}" { capabilities = ["list","read","update"]}
-path "{{.RootPath}}/secret/metadata/{{.Idtype}}/{{.Name}}/group_secrets/{{.Path}}" { capabilities = ["list","read","delete"]}
+path "{{.RootPath}}/secret/metadata/{{.Idtype}}/{{.Name}}/group_access/{{.Path}}" { capabilities = ["list","read","delete"]}
 `
 
 type ClientMeta struct {
@@ -116,7 +120,7 @@ func (c *ClientMeta) read(path string) (map[string]interface{}, error) {
 		defer resp.Body.Close()
 		if resp.StatusCode == 404 {
 			trace.Println("Vault-Exchange PLUGIN TRACE ->Client-> read->Response->404",r.URL,resp.Body)
-			return nil, nil
+			return nil, errors.New("Response->404->"+path)
 		}
 	}
 	if err != nil {
@@ -176,7 +180,8 @@ func (c *ClientMeta) delete(path string) error {
 	return err
 }
 
-//check whether the user/group has already been registered
+//authtype=kubernetes,aws,oidc
+//idtype=role,group
 func (c *ClientMeta) readID(authtype, idtype, name string) (interface{}, error) {
 	result, err := c.read("/v1/auth/" + authtype + "/" + idtype + "/" + name)
 	if err != nil {
@@ -190,6 +195,8 @@ func (c *ClientMeta) readID(authtype, idtype, name string) (interface{}, error) 
 
 }
 
+//authtype=kubernetes,aws,oidc
+//idtype=role,group
 func (c *ClientMeta) writeID(authtype, idtype, name string,body  map[string]string) error {
 	/*
 	body := map[string]string{
@@ -223,7 +230,7 @@ func (c *ClientMeta) writeSecret(configEntry *configData,path,comments string) e
 	return rrr;
 }
 
-
+//idtype==groups
 func (c *ClientMeta) createPolicy(configEntry *configData, idtype, name, privileges,policy_name,path string, ) (string, error) {
 	policyMetaData := Policy{
 		RootPath: configEntry.RootPath,
@@ -237,7 +244,7 @@ func (c *ClientMeta) createPolicy(configEntry *configData, idtype, name, privile
 	if privileges=="su" {
 		policyData, err = template.New(policy_name).Parse(super_admin_policy)
 	} else if privileges=="admin" {
-		policyData, err = template.New(policy_name).Parse(admin_policy)
+		policyData, err = template.New(policy_name).Parse(group_admin_policy)
 	} else {
 		policyData, err = template.New(policy_name).Parse(grant_write_only_policy)
 	}
@@ -258,8 +265,7 @@ func (c *ClientMeta) writePolicy(name, rules string) (*logical.Response, error) 
 	if err != nil {
 		return logical.ErrorResponse("writePolicy->failed io open client"), err
 	}
-	trace.Println("Vault-Exchange PLUGIN TRACE ->client ","writePolicy-> ", name, rules)
-
+	//trace.Println("Vault-Exchange PLUGIN TRACE ->client ","writePolicy-> ", name, rules)
 	if err := client.Sys().PutPolicy(name, rules); err != nil {
 		return logical.ErrorResponse("writePolicy->failed to  write policy"), err
 	}

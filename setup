@@ -59,8 +59,14 @@ export VAULT_SKIP_VERIFY=true
 
 #*******update default policy to allow authenticated users to make exchange API calls
  ~/Workspace/bin/vault read sys/policy/default > new_default_policy.hcl
+vi new_default_policy.hcl
 #*******Remove comments (first 3 lines) &  add the following to the default policy
-path "auth/exchange/*" {
+
+# Vault Exchange Commands
+path "auth/exchange/grant/access/*" {
+    capabilities = ["update"]
+}
+path "auth/exchange/register/group" {
     capabilities = ["update"]
 }
 path "auth/token/lookup" {
@@ -72,7 +78,8 @@ path "auth/token/lookup" {
 
 #Enable OIDC authentication
 ~/Workspace/bin/vault auth enable oidc
-#*********** - example onelogin SSO
+
+#*********** - example ONELOGIN  SSO 
 export CLIENT_ID=$$$$$$$$$$$$$$$$
 export CLIENT_SECRET=$$$$$$$$$$$$$$$
 ~/Workspace/bin/vault write auth/oidc/config oidc_discovery_url=$ENDPOINT oidc_client_id=$CLIENT_ID oidc_client_secret=$CLIENT_SECRET default_role="onelogin"
@@ -98,7 +105,7 @@ export ENDPOINT=https://upstart.okta.com/oauth2/$$$$$$$$$$$$$$$$ //OKTA OIDC Aut
 EOF
 
 
-curl -X GET -H "Accept: application/json"  -H 'Authorization: SSWS "'"$CLIENT_SECRET"'" '  https://upstart.okta.com/api/v1/users/hardeep.singh/groups
+curl -X GET -H "Accept: application/json"  -H "Authorization: SSWS ${API_TOKEN}"   https://upstart.okta.com/api/v1/users/hardeep.singh/groups
 
 
 
@@ -117,22 +124,6 @@ curl -X GET -H "Accept: application/json"  -H 'Authorization: SSWS "'"$CLIENT_SE
 ~/Workspace/bin/vault write upstart-server/config/urls issuing_certificates="https://localhost:8200/v1/upstart-server/ca" crl_distribution_points="https://localhost:8200/v1/upstart-server/crl"
 ~/Workspace/bin/vault write upstart-server/roles/issuecerts  allowed_domains=upstart.com allow_subdomains=true max_ttl=8760h client_flag=false server_flag=true
 
-~/Workspace/bin/vault  secrets list
-~/Workspace/bin/vault read  upstart-client/roles/upstart-com 
-~/Workspace/bin/vault read  upstart-client/config/urls
-~/Workspace/bin/vault write  upstart-client/tidy safety_buffer="8h"
-~/Workspace/bin/vault list  upstart-client/certs
-
-
-~/Workspace/bin/vault write upstart-client/config/ca pem_bundle(private_key+public_key)
-~/Workspace/bin/vault write upstart-client/issue/issuecerts  common_name="hardeep.singh"
-openssl x509 -in /tmp/cert.pem -text
-
-vi csr.conf
-openssl req -new -key self-ssl.key -out self-ssl.csr -config csr.conf
-openssl req -in self-ssl.csr -text -noout
-~/Workspace/bin/vault write pki/sign-verbatim/upstart-com  csr=@/Users/hardeepsingh/Workspace/security/vault-exchange/self-ssl.csr 
-
 
 #*******Setup the plugin
 mkdir vault/plugin
@@ -147,7 +138,7 @@ export SHA256=$(shasum -a 256 vault/plugin/vault-exchange | cut -d' ' -f1)
 ~/Workspace/bin/vault write sys/plugins/catalog/vault-exchange  sha_256="${SHA256}" command="vault-exchange" 
 ~/Workspace/bin/vault auth enable -path=exchange  -plugin-name=vault-exchange plugin 
 ~/Workspace/bin/vault plugin list  | grep vault-exchange
-~/Workspace/bin/vault write auth/exchange/setup display_name=exchange root_path=kv root_token=$admintoken  admin_group="VAULT_admins" client_certs="upstart-client/issue/issuecerts" server_certs="upstart-server/issue/issuecerts"
+~/Workspace/bin/vault write auth/exchange/setup display_name=exchange root_path=kv root_token=$admintoken  admin_group="AWS-Admin" client_certs="upstart-client/issue/issuecerts" server_certs="upstart-server/issue/issuecerts"
 ~/Workspace/bin/vault write auth/exchange/config/authz api_token=$API_TOKEN api_url=$API_URL 
 
 
@@ -156,7 +147,10 @@ export SHA256=$(shasum -a 256 vault/plugin/vault-exchange | cut -d' ' -f1)
 write auth/exchange/register/group  name={groupsname}
 #This step will create the following  path "kv/secret/data/groups/{groupsname}/group_secrets/"
 
-write auth/exchange/create/clientcert  type="X509"
+write auth/exchange/grant/access/group  name={source_groupsname} privilege="r" path="{groupsname}/group_secrets/"
+write auth/exchange/grant/access/group  name="AWS-Admin" privilege="r" path="Infosec/group_secrets/hardeep_test"
+
+write auth/exchange/cert/client/create  type="X509"
 #copy data field to file /tmp/cert and then call : 
 cat /tmp/cert jq | awk '{gsub(/\\n/,"\n")}1'
 openssl x509 -in /tmp/cert.pem -text
@@ -186,6 +180,23 @@ vault write auth/kubernetes/config token_reviewer_jwt="reviewer_service_account_
 ~/Workspace/bin/vault policy write groups-groups-Your_SSO_group_Name_Here temp
 
 
+
+# *********************************** Misc
+~/Workspace/bin/vault  secrets list
+~/Workspace/bin/vault read  upstart-client/roles/upstart-com 
+~/Workspace/bin/vault read  upstart-client/config/urls
+~/Workspace/bin/vault write  upstart-client/tidy safety_buffer="8h"
+~/Workspace/bin/vault list  upstart-client/certs
+
+
+~/Workspace/bin/vault write upstart-client/config/ca pem_bundle(private_key+public_key)
+~/Workspace/bin/vault write upstart-client/issue/issuecerts  common_name="hardeep.singh"
+openssl x509 -in /tmp/cert.pem -text
+
+vi csr.conf
+openssl req -new -key self-ssl.key -out self-ssl.csr -config csr.conf
+openssl req -in self-ssl.csr -text -noout
+~/Workspace/bin/vault write pki/sign-verbatim/upstart-com  csr=@/Users/hardeepsingh/Workspace/security/vault-exchange/self-ssl.csr 
 
 
 

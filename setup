@@ -110,15 +110,16 @@ curl -X GET -H "Accept: application/json"  -H "Authorization: SSWS ${API_TOKEN}"
 
 
 #************* Setup PKI **************************
-~/Workspace/bin/vault  secrets enable pki
-~/Workspace/bin/vault  secrets move pki upstart-client
+export CN=upstart.com
+#~/Workspace/bin/vault  secrets enable pki
+#~/Workspace/bin/vault  secrets move pki upstart-client
+~/Workspace/bin/vault  secrets enable -path=upstart-client pki
 ~/Workspace/bin/vault  secrets tune -max-lease-ttl=8760h upstart-client
 ~/Workspace/bin/vault write upstart-client/root/generate/internal common_name=upstart.com ttl=8760h
 ~/Workspace/bin/vault write upstart-client/config/urls issuing_certificates="https://localhost:8200/v1/upstart-client/ca" crl_distribution_points="https://localhost:8200/v1/upstart-client/crl"
 ~/Workspace/bin/vault write upstart-client/roles/issuecerts allow_any_name=true allowed_domains=upstart.com allow_subdomains=true max_ttl=24h client_flag=true server_flag=false
 
-~/Workspace/bin/vault  secrets enable pki
-~/Workspace/bin/vault  secrets move pki upstart-server
+~/Workspace/bin/vault  secrets enable -path=upstart-server pki
 ~/Workspace/bin/vault  secrets tune -max-lease-ttl=8760h upstart-server
 ~/Workspace/bin/vault write upstart-server/root/generate/internal common_name=upstart.com ttl=8760h
 ~/Workspace/bin/vault write upstart-server/config/urls issuing_certificates="https://localhost:8200/v1/upstart-server/ca" crl_distribution_points="https://localhost:8200/v1/upstart-server/crl"
@@ -138,9 +139,11 @@ export SHA256=$(shasum -a 256 vault/plugin/vault-exchange | cut -d' ' -f1)
 ~/Workspace/bin/vault write sys/plugins/catalog/vault-exchange  sha_256="${SHA256}" command="vault-exchange" 
 ~/Workspace/bin/vault auth enable -path=exchange  -plugin-name=vault-exchange plugin 
 ~/Workspace/bin/vault plugin list  | grep vault-exchange
-~/Workspace/bin/vault write auth/exchange/setup display_name=exchange root_path=kv root_token=$admintoken  admin_group="AWS-Admin" client_certs="upstart-client/issue/issuecerts" server_certs="upstart-server/issue/issuecerts"
-~/Workspace/bin/vault write auth/exchange/config/authz api_token=$API_TOKEN api_url=$API_URL 
+~/Workspace/bin/vault write auth/exchange/setup display_name=exchange root_path=kv root_token=$admintoken  admin_group="AWS-Admin" client_certs_pki="upstart-client" server_certs_pki="upstart-server"  certs_cn=$CN certs_role="issuecerts"
+~/Workspace/bin/vault write auth/exchange/authz/config api_token=$API_TOKEN api_url=$API_URL 
 
+list sys/policy
+read sys/policy/groups-aws-admin
 
 #Login from UI using OIDC and your SSO. Use the console in the UI to make all the subsequent calls
 
@@ -152,7 +155,7 @@ write auth/exchange/grant/access/group  name="AWS-Admin" privilege="r" path="Inf
 
 write auth/exchange/cert/client/create  type="X509"
 #copy data field to file /tmp/cert and then call : 
-cat /tmp/cert jq | awk '{gsub(/\\n/,"\n")}1'
+cat /tmp/cert | jq | awk '{gsub(/\\n/,"\n")}1' >  /tmp/cert.pem
 openssl x509 -in /tmp/cert.pem -text
 
 #*************** Enable AWS Authentication

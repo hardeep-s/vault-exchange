@@ -28,10 +28,13 @@ type configData struct {
 	APIToken  string `json:"authz_token"`
 	APIURL  string `json:"authz_url"`
 	AdminGroup  string `json:"admin_group"`
-	ServerCertPath  string `json:"server_certs"`
-	ClientCertPath  string `json:"client_certs"`
+	ServerCertPath  string `json:"server_certs_pki"`
+	ClientCertPath  string `json:"client_certs_pki"`
+	CertRole  string `json:"cert_role"`
+	CertCN  string `json:"certs_cn"`
 	CERTSConfig map[string]string `json:"certs_config"`
 }
+
  
 
 func main() {
@@ -67,6 +70,7 @@ func Backend() *backend {
 		Paths: append([]*framework.Path{
 			pathConfig(&b),
 			pathAuthZConfig(&b),
+			pathSignServerCert(&b),
 			pathSignClientCert(&b),
 			pathRegisterGroup(&b),
 			pathGrantGroupAccess(&b),
@@ -95,17 +99,27 @@ func pathConfig(b *backend) *framework.Path {
 				Type:        framework.TypeString,
 				Description: "SSO Group  that will be the admin this vault",
 			},
-			"client_certs": &framework.FieldSchema{
+			"client_certs_pki": &framework.FieldSchema{
 				Type:        framework.TypeString,
 				Default:     "",
 				Description: "path for generating client certs ",
 			},
-			"server_certs": &framework.FieldSchema{
+			"server_certs_pki": &framework.FieldSchema{
 				Type:        framework.TypeString,
 				Default:     "DUMMY/Path/will/Not/Work",
 				Description: "path for generating server certs ",
 			},
+			"certs_role": &framework.FieldSchema{
+				Type:        framework.TypeString,
+				Default:     "issuecerts",
+				Description: "role to issue certs ",
+			},
+			"certs_cn": &framework.FieldSchema{
+				Type:        framework.TypeString,
+				Description: "Common Name for Certs ",
+			},
 		},
+
 
 		Callbacks: map[logical.Operation]framework.OperationFunc{
 			logical.UpdateOperation: b.writeConfig,
@@ -116,7 +130,7 @@ func pathConfig(b *backend) *framework.Path {
 //Call to configure OIDC API calls for group info
 func pathAuthZConfig(b *backend) *framework.Path {
 	return &framework.Path{
-		Pattern: "config/authz",
+		Pattern: "authz/config",
 		Fields: map[string]*framework.FieldSchema{
 			"api_token": &framework.FieldSchema{
 				Type:        framework.TypeString,
@@ -151,7 +165,7 @@ func pathSignClientCert(b *backend) *framework.Path {
 			},
 			"ips": &framework.FieldSchema{
 				Type:		framework.TypeString,
-				Default:	"",
+				Default:	"*",
 				Description: "comma seperated list of source IP's from where the SSH cert is valid",
 			},
 		},
@@ -291,12 +305,15 @@ func pathGrantKubernetesAccess(b *backend) *framework.Path {
 
 //write the plugin config to vault server
 func (b *backend) writeConfig(ctx context.Context, req *logical.Request, data *framework.FieldData) (*logical.Response, error) {
+	trace.Println("main->Vault-Exchange PLUGIN TRACE -> ","writeConfig->START ")
 	configinfo := &configData{
 		RootToken: data.Get("root_token").(string),
 		RootPath:  data.Get("root_path").(string),
 		AdminGroup:  data.Get("admin_group").(string),
-		ServerCertPath:  data.Get("server_certs").(string),
-		ClientCertPath:  data.Get("client_certs").(string),
+		ServerCertPath:  data.Get("server_certs_pki").(string),
+		ClientCertPath:  data.Get("client_certs_pki").(string),
+		CertRole: data.Get("certs_role").(string),
+		CertCN: data.Get("certs_cn").(string),
 	}
     if configinfo.RootToken == "" || configinfo.AdminGroup=="" {
 		return logical.ErrorResponse("You need to provide  admin group and root token"), errors.New("You need to provide  admin group and root token")
@@ -324,6 +341,8 @@ func (b *backend) updateConfig(ctx context.Context, req *logical.Request, data *
 		AdminGroup:  configEntry.AdminGroup,
 		ServerCertPath:  configEntry.ServerCertPath,
 		ClientCertPath:  configEntry.ClientCertPath,
+		CertRole: configEntry.CertRole,
+		CertCN: configEntry.CertCN,
 		APIToken: data.Get("api_token").(string),
 		APIURL: data.Get("api_url").(string),
 	}

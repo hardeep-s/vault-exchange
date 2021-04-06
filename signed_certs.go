@@ -32,7 +32,7 @@ func (b *backend) generateClientCert(ctx context.Context, req *logical.Request, 
 		"max_ttl": ttl,
 	}
 	certtype := data.Get("type").(string)
-	path := "/v1/"+configEntry.ClientCertPath  
+	path := "/v1/"+configEntry.ClientCertPath  +"/issue/"+configEntry.CertRole
 	if strings.ToLower(certtype) =="ssh" {
 		path = "/v1/"+configEntry.ClientCertPath  
 	}
@@ -45,8 +45,6 @@ func (b *backend) generateClientCert(ctx context.Context, req *logical.Request, 
 }
 
 func (b *backend) generateServerCert(ctx context.Context, req *logical.Request, data *framework.FieldData) (*logical.Response, error) {
-	auth := strings.Split(req.DisplayName, "-")[0]
-	user := strings.TrimPrefix(req.DisplayName, auth + "-")
 	configEntry, err := b.readConfig(ctx, req)
 	if err != nil {
 		return logical.ErrorResponse("failed to read config"), err
@@ -55,17 +53,10 @@ func (b *backend) generateServerCert(ctx context.Context, req *logical.Request, 
 		ClientToken: configEntry.RootToken,
 	}
 	body := map[string]string{
-		"common_name": user,
+		"common_name": data.Get("name").(string)+"."+configEntry.CertCN,
 	}
-    //groups:=listGroups(ctx,req,user)
-	certtype := data.Get("type").(string)
-	var path string
-	if strings.ToLower(certtype) =="ssh" {
-	} else {
-		path = "/v1/"+configEntry.ClientCertPath  // "/v1/upstart-client/issue/issuecerts"
-	}
+	path := "/v1/"+configEntry.ServerCertPath  +"/issue/"+configEntry.CertRole 
 	certObject,certerr:= c.writeCmd("POST",path , body )
-	//trace.Println(""signed_certs->backend ->Vault-Exchange PLUGIN TRACE -> ","generateCert-> ",certObject,certerr)
 	resp := &logical.Response{
 		Data: certObject,
 	}

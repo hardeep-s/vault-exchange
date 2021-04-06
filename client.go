@@ -16,11 +16,11 @@ type Policy struct {
 	RootPath, Idtype, Name, Path, ServerCertPath, ClientCertPath string
 }
 const super_admin_policy = `
-path "v1/{{.ServerCertPath}}/*" {capabilities = ["read","update","delete"]}
-path "v1/{{.ClientCertPath}}/*" {capabilities = ["read","update","delete"]}
-path "v1/auth/exchange/cert/*" {capabilities = ["read","update","delete","list"]}
-path "v1/auth/exchange/config/authz" {capabilities = ["read","update"]}
-path "v1/auth/exchange/grant" {capabilities = ["read","update","delete"]}
+path "{{.ServerCertPath}}/*" {capabilities = ["read","update","delete"]}
+path "{{.ClientCertPath}}/*" {capabilities = ["read","update","delete"]}
+path "auth/exchange/*" {capabilities = ["read","update","delete","list"]}
+//path "auth/exchange/authz" {capabilities = ["update"]}
+//path "auth/exchange/cert/*" {capabilities = ["read","update","delete","list"]}
 path "sys/policy/*" {capabilities = ["list","read"]}
 path "identity/*" {capabilities = ["list","read"]}
 path "{{.RootPath}}/*" {capabilities = ["list"]}
@@ -30,8 +30,10 @@ path "{{.RootPath}}/secret/metadata/{{.Idtype}}/{{.Name}}/group_grant/{{.Path}}"
 `
 
 const group_admin_policy = `
-path "v1/auth/exchange/grant/access/*" {capabilities = ["update"]}
-path "v1/auth/exchange/cert/client/*" {capabilities = ["update"]}
+path "auth/exchange" {capabilities = ["read","update","delete","list"]}
+path "auth/exchange/cert" {capabilities = ["read","update","delete","list"]}
+path "auth/exchange/cert/client" {capabilities = ["read","update","delete","list"]}
+path "auth/exchange/cert/client/*" {capabilities = ["update"]}
 path "{{.RootPath}}/*" {capabilities = ["list"]}
 path "{{.RootPath}}/secret/data/{{.Idtype}}/{{.Name}}/group_secrets/{{.Path}}" { capabilities = ["list", "create", "read", "update","delete", "sudo"]}
 path "{{.RootPath}}/secret/metadata/{{.Idtype}}/{{.Name}}/group_access/{{.Path}}" { capabilities = ["list", "read", "delete"]}

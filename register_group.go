@@ -56,6 +56,7 @@ func (b *backend) addGroups(groupname,privileges string,ctx context.Context, req
 		}
 		c.writeSecret(configEntry,groupname+"/group_secrets/donot_remove","Do not remove this key val")
 	}
+	trace.Println("******************* ",policy_name, policystr)
 
 	return c.writePolicy(policy_name, policystr)
 }

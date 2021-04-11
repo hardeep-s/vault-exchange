@@ -19,36 +19,34 @@ const super_admin_policy = `
 path "{{.ServerCertPath}}/*" {capabilities = ["read","update","delete"]}
 path "{{.ClientCertPath}}/*" {capabilities = ["read","update","delete"]}
 path "auth/exchange/*" {capabilities = ["read","update","delete","list"]}
-//path "auth/exchange/authz" {capabilities = ["update"]}
-//path "auth/exchange/cert/*" {capabilities = ["read","update","delete","list"]}
 path "sys/policy/*" {capabilities = ["list","read"]}
 path "identity/*" {capabilities = ["list","read"]}
-path "{{.RootPath}}/*" {capabilities = ["list"]}
+path "{{.RootPath}}/*" {capabilities = ["list","read"]}
 path "{{.RootPath}}/secret/data/{{.Idtype}}/{{.Name}}/group_secrets/{{.Path}}" { capabilities = ["list", "create", "read", "update","delete", "sudo"]}
-path "{{.RootPath}}/secret/metadata/{{.Idtype}}/{{.Name}}/group_access/{{.Path}}" { capabilities = ["list", "read", "delete"]}
-path "{{.RootPath}}/secret/metadata/{{.Idtype}}/{{.Name}}/group_grant/{{.Path}}" { capabilities = ["read"]}
 `
+//path "{{.RootPath}}/secret/metadata/{{.Idtype}}/{{.Name}}/group_access/{{.Path}}" { capabilities = ["list", "read", "delete"]}
+//path "{{.RootPath}}/secret/metadata/{{.Idtype}}/{{.Name}}/group_grant/{{.Path}}" { capabilities = ["read"]}
 
 const group_admin_policy = `
 path "auth/exchange" {capabilities = ["read","update","delete","list"]}
 path "auth/exchange/cert" {capabilities = ["read","update","delete","list"]}
 path "auth/exchange/cert/client" {capabilities = ["read","update","delete","list"]}
 path "auth/exchange/cert/client/*" {capabilities = ["update"]}
-path "{{.RootPath}}/*" {capabilities = ["list"]}
+path "auth/exchange/grant/access/*" {capabilities = ["update"]}
 path "{{.RootPath}}/secret/data/{{.Idtype}}/{{.Name}}/group_secrets/{{.Path}}" { capabilities = ["list", "create", "read", "update","delete", "sudo"]}
-path "{{.RootPath}}/secret/metadata/{{.Idtype}}/{{.Name}}/group_access/{{.Path}}" { capabilities = ["list", "read", "delete"]}
-path "{{.RootPath}}/secret/metadata/{{.Idtype}}/{{.Name}}/group_grant/{{.Path}}" { capabilities = ["read"]}
 `
+//path "{{.RootPath}}/secret/metadata/{{.Idtype}}/{{.Name}}/group_access/{{.Path}}" { capabilities = ["list", "read", "delete"]}
+//path "{{.RootPath}}/secret/metadata/{{.Idtype}}/{{.Name}}/group_grant/{{.Path}}" { capabilities = ["read"]}
 
 const grant_read_only_policy = `
 path "{{.RootPath}}/secret/data/{{.Idtype}}/{{.Name}}/group_secrets/{{.Path}}" { capabilities = ["list","read"]}
-path "{{.RootPath}}/secret/metadata/{{.Idtype}}/{{.Name}}/group_access/{{.Path}}" { capabilities = ["list", "read"]}
 `
+//path "{{.RootPath}}/secret/metadata/{{.Idtype}}/{{.Name}}/group_access/{{.Path}}" { capabilities = ["list", "read"]}
  
 const grant_write_only_policy = `
 path "{{.RootPath}}/secret/data/{{.Idtype}}/{{.Name}}/group_secrets/{{.Path}}" { capabilities = ["update"]}
-path "{{.RootPath}}/secret/metadata/{{.Idtype}}/{{.Name}}/group_access/{{.Path}}" { capabilities = ["delete"]}
 `
+//path "{{.RootPath}}/secret/metadata/{{.Idtype}}/{{.Name}}/group_access/{{.Path}}" { capabilities = ["delete"]}
 
 const grant_read_write_policy = `
 path "{{.RootPath}}/secret/data/{{.Idtype}}/{{.Name}}/group_secrets/{{.Path}}" { capabilities = ["list","read","update"]}
@@ -121,7 +119,6 @@ func (c *ClientMeta) read(path string) (map[string]interface{}, error) {
 	if resp != nil {
 		defer resp.Body.Close()
 		if resp.StatusCode == 404 {
-			trace.Println("Vault-Exchange PLUGIN TRACE ->Client-> read->Response->404",r.URL,resp.Body)
 			return nil, errors.New("Response->404->"+path)
 		}
 	}

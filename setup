@@ -37,7 +37,7 @@ export VAULT_SKIP_VERIFY=true
 
 #*******Start the vault server
 ~/Workspace/bin/vault server -config=config.hcl 
-~/Workspace/bin/vault   operator init -key-shares=1 -key-threshold=1
+~/Workspace/bin/vault   operator init -key-shares=1 -key-threshold=1  -format "json" 
 #*******Save the unseal keys and root token 
 export admintoken=your_root_token 
 
@@ -91,6 +91,7 @@ export API_URL=https://upstart.okta.com/api/v1
 export CLIENT_ID=$$$$$$$$$$$$$$$$ //OKTA OIDC Client ID for Vault
 export CLIENT_SECRET=$$$$$$$$$$$$$$$ //OKTA OIDC Client Secret for Vault
 export ENDPOINT=https://upstart.okta.com/oauth2/$$$$$$$$$$$$$$$$ //OKTA OIDC Authorization Server For Vault
+
 ~/Workspace/bin/vault write auth/oidc/config oidc_discovery_url=$ENDPOINT oidc_client_id=$CLIENT_ID oidc_client_secret=$CLIENT_SECRET default_role="okta"
 ~/Workspace/bin/vault write auth/oidc/role/okta -<<EOF
 {
@@ -139,24 +140,41 @@ export SHA256=$(shasum -a 256 vault/plugin/vault-exchange | cut -d' ' -f1)
 ~/Workspace/bin/vault write sys/plugins/catalog/vault-exchange  sha_256="${SHA256}" command="vault-exchange" 
 ~/Workspace/bin/vault auth enable -path=exchange  -plugin-name=vault-exchange plugin 
 ~/Workspace/bin/vault plugin list  | grep vault-exchange
-~/Workspace/bin/vault write auth/exchange/setup display_name=exchange root_path=kv root_token=$admintoken  admin_group="AWS-Admin" client_certs_pki="upstart-client" server_certs_pki="upstart-server"  certs_cn=$CN certs_role="issuecerts"
+~/Workspace/bin/vault write auth/exchange/setup display_name=exchange root_path=kv root_token=$admintoken  admin_group="Vault-Admin" client_certs_pki="upstart-client" server_certs_pki="upstart-server"  certs_cn=$CN certs_role="issuecerts"
 ~/Workspace/bin/vault write auth/exchange/authz/config api_token=$API_TOKEN api_url=$API_URL 
 
 list sys/policy
 read sys/policy/groups-aws-admin
+write auth/exchange/cert/server/create  name="hardeep"
+read sys/policy/groups-aws-eng-infosec
+write  auth/exchange/grant/cert/group name="aws-eng-infosec"
+write  auth/exchange/revoke/cert/group name="aws-eng-infosec"
+read sys/policy/groups-aws-eng-infosec
+write auth/exchange/cert/client/create  name="hardeep"
+
+write auth/exchange/register/group  name="AWS-Eng-InfoSec"
+write auth/exchange/grant/access/group  name="AWS-Admin" privilege="r" path="AWS-Eng-InfoSec/group_secrets/*"
+write  auth/exchange/grant/cert/group name="AWS-Eng-InfoSec"
+
 
 #Login from UI using OIDC and your SSO. Use the console in the UI to make all the subsequent calls
 
 write auth/exchange/register/group  name={groupsname}
+#group name is case sensitive
+write auth/exchange/register/group  name="AWS-Eng-InfoSec"
 #This step will create the following  path "kv/secret/data/groups/{groupsname}/group_secrets/"
 
-write auth/exchange/grant/access/group  name={source_groupsname} privilege="r" path="{groupsname}/group_secrets/"
-write auth/exchange/grant/access/group  name="AWS-Admin" privilege="r" path="Infosec/group_secrets/hardeep_test"
+#grant access to group for server certs
+write auth/exchange/grant/access/group  name={source_groupsname} privilege="r/w/rw" path="{groupsname}/group_secrets/"
+write auth/exchange/grant/access/group  name="AWS-Admin" privilege="r" path="Infosec/group_secrets/*"
+#grant access to group for path in another group
+write  auth/exchange/grant/cert/group name={groupsname}
 
 write auth/exchange/cert/client/create  type="X509"
 #copy data field to file /tmp/cert and then call : 
 cat /tmp/cert | jq | awk '{gsub(/\\n/,"\n")}1' >  /tmp/cert.pem
 openssl x509 -in /tmp/cert.pem -text
+
 
 #*************** Enable AWS Authentication
 ~/Workspace/bin/vault auth enable aws 

@@ -9,11 +9,13 @@ import (
 	"strings"
 )
 const MAXTTL = time.Hour * 24
-
-func (b *backend) generateClientCert(ctx context.Context, req *logical.Request, data *framework.FieldData) (*logical.Response, error) {
+type certMeta struct {
+    configobj *configMeta
+}
+func (cert *certMeta) generateClientCert(ctx context.Context, req *logical.Request, data *framework.FieldData) (*logical.Response, error) {
 	auth := strings.Split(req.DisplayName, "-")[0]
 	user := strings.TrimPrefix(req.DisplayName, auth + "-")
-	configEntry, err := b.readConfig(ctx, req)
+	configEntry, err := cert.configobj.readConfig(ctx, req)
 	if err != nil {
 		return logical.ErrorResponse("failed to read config"), err
 	}
@@ -44,8 +46,8 @@ func (b *backend) generateClientCert(ctx context.Context, req *logical.Request, 
 	return resp, certerr
 }
 
-func (b *backend) generateServerCert(ctx context.Context, req *logical.Request, data *framework.FieldData) (*logical.Response, error) {
-	configEntry, err := b.readConfig(ctx, req)
+func (cert *certMeta) generateServerCert(ctx context.Context, req *logical.Request, data *framework.FieldData) (*logical.Response, error) {
+	configEntry, err := cert.configobj.readConfig(ctx, req)
 	if err != nil {
 		return logical.ErrorResponse("failed to read config"), err
 	}

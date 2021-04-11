@@ -11,28 +11,31 @@ import (
 )
 
 
+type groupMeta struct {
+    configobj *configMeta
+}
 //registering a group includes creating  a path and corresponding policy for the group
-func (b *backend) registerGroups(ctx context.Context, req *logical.Request, data *framework.FieldData) (*logical.Response, error) {
+func (groupobj *groupMeta) registerGroups(ctx context.Context, req *logical.Request, data *framework.FieldData) (*logical.Response, error) {
 	auth := strings.Split(req.DisplayName, "-")[0]
 	user := strings.TrimPrefix(req.DisplayName, auth + "-")
 	groupname := data.Get("name").(string)
     if groupname == "" {
 		return logical.ErrorResponse("You need to provide  name for the group"), errors.New("You need to provide  name for the group")
 	}
-	found,err:=b.checkIfMyGroup(ctx,req,user,groupname)
+	found,err:=groupobj.checkIfMyGroup(ctx,req,user,groupname)
 	if err !=nil {
 		return logical.ErrorResponse("Error while fetching group info "), err
 	}
 	if found==false {
 		return logical.ErrorResponse("You can only register a group that you belong to "), errors.New("You can only register a group that you belong to")
 	}
-	return b.addGroups(groupname,"admin",ctx,req,data)
+	return groupobj.addGroups(groupname,"admin",ctx,req,data)
 }
 
 //add  group includes creating  a path and corresponding policy for the group
-func (b *backend) addGroups(groupname,privileges string,ctx context.Context, req *logical.Request, data *framework.FieldData) (*logical.Response, error) {
+func (groupobj *groupMeta) addGroups(groupname,privileges string,ctx context.Context, req *logical.Request, data *framework.FieldData) (*logical.Response, error) {
 	//trace.Println("Vault-Exchange PLUGIN TRACE ->register_group ","addGroups-> ", groupname,privileges)
-	configEntry, err := b.readConfig(ctx, req)
+	configEntry, err := groupobj.configobj.readConfig(ctx, req)
 	if err != nil {
 		return logical.ErrorResponse("failed to read config"), err
 	}
@@ -56,14 +59,13 @@ func (b *backend) addGroups(groupname,privileges string,ctx context.Context, req
 		}
 		c.writeSecret(configEntry,groupname+"/group_secrets/donot_remove","Do not remove this key val")
 	}
-	trace.Println("******************* ",policy_name, policystr)
 
 	return c.writePolicy(policy_name, policystr)
 }
 
  
-func (b *backend) checkIfMyGroup(ctx context.Context, req *logical.Request,user,groupname string) (bool, error) {
-	groups,err:=b.listGroups(ctx,req,user)
+func (groupobj *groupMeta) checkIfMyGroup(ctx context.Context, req *logical.Request,user,groupname string) (bool, error) {
+	groups,err:=groupobj.listGroups(ctx,req,user)
 	if err !=nil {
 		trace.Println("Vault-Exchange PLUGIN TRACE ->register_group ","registerGroups-> GROUP LIST ERROR",err,groups)
 		return false, err
@@ -73,8 +75,8 @@ func (b *backend) checkIfMyGroup(ctx context.Context, req *logical.Request,user,
 
 
 //get groups list from directory service
-func (b *backend) listGroups(ctx context.Context, req *logical.Request,user string) (map[string](map[string]interface{}), error) {
-	configEntry, err := b.readConfig(ctx, req)
+func (groupobj *groupMeta) listGroups(ctx context.Context, req *logical.Request,user string) (map[string](map[string]interface{}), error) {
+	configEntry, err := groupobj.configobj.readConfig(ctx, req)
 	c := &ClientMeta{
 		ClientToken: configEntry.RootToken,
 	}

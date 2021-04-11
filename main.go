@@ -21,6 +21,9 @@ var trace *log.Logger
 type backend struct {
 	*framework.Backend
 }
+type configMeta struct {
+    b *backend
+}
 
 type configData struct {
 	RootToken string `json:"root_token"`
@@ -74,15 +77,23 @@ func Backend() *backend {
 			pathSignClientCert(&b),
 			pathRegisterGroup(&b),
 			pathGrantGroupAccess(&b),
+			pathGrantGroupServerCert(&b),
+			pathRevokeGroupServerCert(&b),
+			pathGrantAWSServerCert(&b),
 		}),
 		BackendType: logical.TypeCredential,
 	}
 	return &b
 }
 
-
+func createConfigObject(b *backend) (*configMeta) {
+	return &configMeta{
+				b:b,
+			}   
+}
 //Call to configure the plugin
 func pathConfig(b *backend) *framework.Path {
+	configobj:=createConfigObject(b)   
 	return &framework.Path{
 		Pattern: "setup",
 		Fields: map[string]*framework.FieldSchema{
@@ -122,13 +133,14 @@ func pathConfig(b *backend) *framework.Path {
 
 
 		Callbacks: map[logical.Operation]framework.OperationFunc{
-			logical.UpdateOperation: b.writeConfig,
+			logical.UpdateOperation: configobj.writeConfig,
 		},
 	}
 }
 
 //Call to configure OIDC API calls for group info
 func pathAuthZConfig(b *backend) *framework.Path {
+    configobj:= createConfigObject(b)
 	return &framework.Path{
 		Pattern: "authz/config",
 		Fields: map[string]*framework.FieldSchema{
@@ -143,13 +155,15 @@ func pathAuthZConfig(b *backend) *framework.Path {
 		},
 
 		Callbacks: map[logical.Operation]framework.OperationFunc{
-			logical.UpdateOperation: b.updateConfig,
+			logical.UpdateOperation: configobj.updateConfig,
 		},
 	}
 }
-
 //Call to Sign Certificates
 func pathSignClientCert(b *backend) *framework.Path {
+	certObject := &certMeta{
+        configobj: createConfigObject(b),
+    }   
 	return &framework.Path{
 		Pattern: "cert/client/create",
 		Fields: map[string]*framework.FieldSchema{
@@ -170,13 +184,16 @@ func pathSignClientCert(b *backend) *framework.Path {
 			},
 		},
 		Callbacks: map[logical.Operation]framework.OperationFunc{
-			logical.UpdateOperation: b.generateClientCert,
+			logical.UpdateOperation: certObject.generateClientCert,
 		},
 	}
 }
 
 //Call to Sign Certificates
 func pathSignServerCert(b *backend) *framework.Path {
+	certObject := &certMeta{
+        configobj: createConfigObject(b),
+    }   
 	return &framework.Path{
 		Pattern: "cert/server/create",
 		Fields: map[string]*framework.FieldSchema{
@@ -191,13 +208,16 @@ func pathSignServerCert(b *backend) *framework.Path {
 			},
 		},
 		Callbacks: map[logical.Operation]framework.OperationFunc{
-			logical.UpdateOperation: b.generateServerCert,
+			logical.UpdateOperation: certObject.generateServerCert,
 		},
 	}
 }
 
 //configure the command used for registering a group
 func pathRegisterGroup(b *backend) *framework.Path {
+	groupObject := &groupMeta{
+        configobj: createConfigObject(b),
+    }   
 	return &framework.Path{
 		Pattern: "register/group",
 		Fields: map[string]*framework.FieldSchema{
@@ -207,13 +227,70 @@ func pathRegisterGroup(b *backend) *framework.Path {
 			},
 		},
 		Callbacks: map[logical.Operation]framework.OperationFunc{
-			logical.UpdateOperation: b.registerGroups,
+			logical.UpdateOperation: groupObject.registerGroups,
 		},
 	}
 }
 
-//Call to grant access to another group
+func pathGrantGroupServerCert(b *backend) *framework.Path {
+	grantObject := &GrantMeta{
+        configobj: createConfigObject(b),
+    }   
+	return &framework.Path{
+		Pattern: "grant/cert/group",
+		Fields: map[string]*framework.FieldSchema{
+			"name": &framework.FieldSchema{
+				Type:        framework.TypeString,
+				Description: "Name of the role that will be granted access",
+			},
+		},
+		Callbacks: map[logical.Operation]framework.OperationFunc{
+			logical.UpdateOperation: grantObject.grantGroupServerCert,
+		},
+	}
+}
+
+func pathRevokeGroupServerCert(b *backend) *framework.Path {
+	grantObject := &GrantMeta{
+        configobj: createConfigObject(b),
+    }   
+	return &framework.Path{
+		Pattern: "revoke/cert/group",
+		Fields: map[string]*framework.FieldSchema{
+			"name": &framework.FieldSchema{
+				Type:        framework.TypeString,
+				Description: "Name of the role that will be granted access",
+			},
+		},
+		Callbacks: map[logical.Operation]framework.OperationFunc{
+			logical.UpdateOperation: grantObject.revokeGroupServerCert,
+		},
+	}
+}
+
+func pathGrantAWSServerCert(b *backend) *framework.Path {
+	grantObject := &GrantMeta{
+        configobj: createConfigObject(b),
+    }   
+	return &framework.Path{
+		Pattern: "grant/cert/aws",
+		Fields: map[string]*framework.FieldSchema{
+			"name": &framework.FieldSchema{
+				Type:        framework.TypeString,
+				Description: "Name of the role that will be granted access",
+			},
+		},
+		Callbacks: map[logical.Operation]framework.OperationFunc{
+			logical.UpdateOperation: grantObject.grantAWSServerCert,
+		},
+	}
+}
+
 func pathGrantGroupAccess(b *backend) *framework.Path {
+	grantObject := &GrantMeta{
+        configobj: createConfigObject(b),
+    }   
+
 	return &framework.Path{
 		Pattern: "grant/access/group",
 		Fields: map[string]*framework.FieldSchema{
@@ -232,13 +309,15 @@ func pathGrantGroupAccess(b *backend) *framework.Path {
 			},
 		},
 		Callbacks: map[logical.Operation]framework.OperationFunc{
-			logical.UpdateOperation: b.grantGroupAccess,
+			logical.UpdateOperation: grantObject.grantGroupAccess,
 		},
 	}
 }
 
-// Call to grant access to an  AWS Role
 func pathGrantAWSAccess(b *backend) *framework.Path {
+	grantObject := &GrantMeta{
+        configobj: createConfigObject(b),
+    }   
 	return &framework.Path{
 		Pattern: "grant/access/aws",
 		Fields: map[string]*framework.FieldSchema{
@@ -262,13 +341,15 @@ func pathGrantAWSAccess(b *backend) *framework.Path {
 			},
 		},
 		Callbacks: map[logical.Operation]framework.OperationFunc{
-			logical.UpdateOperation: b.grantAWSRole,
+			logical.UpdateOperation: grantObject.grantAWSRole,
 		},
 	}
 }
 
-// Call to grant access to an  Kubernets namespaces
 func pathGrantKubernetesAccess(b *backend) *framework.Path {
+	grantObject := &GrantMeta{
+        configobj: createConfigObject(b),
+    }   
 	return &framework.Path{
 		Pattern: "grant/access/kubernetes",
 		Fields: map[string]*framework.FieldSchema{
@@ -298,13 +379,13 @@ func pathGrantKubernetesAccess(b *backend) *framework.Path {
 			},
 		},
 		Callbacks: map[logical.Operation]framework.OperationFunc{
-			logical.UpdateOperation: b.grantKubernetesRole,
+			logical.UpdateOperation: grantObject.grantKubernetesRole,
 		},
 	}
 }
 
 //write the plugin config to vault server
-func (b *backend) writeConfig(ctx context.Context, req *logical.Request, data *framework.FieldData) (*logical.Response, error) {
+func (b *configMeta) writeConfig(ctx context.Context, req *logical.Request, data *framework.FieldData) (*logical.Response, error) {
 	trace.Println("main->Vault-Exchange PLUGIN TRACE -> ","writeConfig->START ")
 	configinfo := &configData{
 		RootToken: data.Get("root_token").(string),
@@ -327,11 +408,14 @@ func (b *backend) writeConfig(ctx context.Context, req *logical.Request, data *f
 	}
 
 	trace.Println("main->Vault-Exchange PLUGIN TRACE -> ","writeConfig->Done ")
-	return b.addGroups(configinfo.AdminGroup,"su",ctx,req,data)
+	groupObject := &groupMeta{
+        configobj: b,
+    }   
+	return groupObject.addGroups(configinfo.AdminGroup,"su",ctx,req,data)
 }
 
 //write the plugin config to vault server
-func (b *backend) updateConfig(ctx context.Context, req *logical.Request, data *framework.FieldData) (*logical.Response, error) {
+func (b *configMeta) updateConfig(ctx context.Context, req *logical.Request, data *framework.FieldData) (*logical.Response, error) {
 	configEntry, err := b.readConfig(ctx, req)
 	configEntry.APIToken=data.Get("api_token").(string)
 	configEntry.APIURL=data.Get("api_url").(string)
@@ -358,7 +442,7 @@ func (b *backend) updateConfig(ctx context.Context, req *logical.Request, data *
 
 
 //when register users or groups, read the plugin configuration and use them as parameters in path creation
-func (b *backend) readConfig(ctx context.Context, req *logical.Request) (*configData, error) {
+func (b *configMeta) readConfig(ctx context.Context, req *logical.Request) (*configData, error) {
 	configEntry, err := req.Storage.Get(ctx, "config/info")
 	if err != nil {
 		return nil, err

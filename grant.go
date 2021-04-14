@@ -18,6 +18,158 @@ type GrantMeta struct {
 }
 
 
+func pathGrantGroupServerCert(b *backend) *framework.Path {
+	grantObject := &GrantMeta{
+        configobj: createConfigObject(b),
+    }   
+	return &framework.Path{
+		Pattern: "grant/cert/group",
+		Fields: map[string]*framework.FieldSchema{
+			"name": &framework.FieldSchema{
+				Type:        framework.TypeString,
+				Description: "Name of the role that will be granted access",
+			},
+		},
+		Callbacks: map[logical.Operation]framework.OperationFunc{
+			logical.UpdateOperation: grantObject.grantGroupServerCert,
+		},
+	}
+}
+
+func pathRevokeGroupServerCert(b *backend) *framework.Path {
+	grantObject := &GrantMeta{
+        configobj: createConfigObject(b),
+    }   
+	return &framework.Path{
+		Pattern: "revoke/cert/group",
+		Fields: map[string]*framework.FieldSchema{
+			"name": &framework.FieldSchema{
+				Type:        framework.TypeString,
+				Description: "Name of the role that will be granted access",
+			},
+		},
+		Callbacks: map[logical.Operation]framework.OperationFunc{
+			logical.UpdateOperation: grantObject.revokeGroupServerCert,
+		},
+	}
+}
+
+func pathGrantAWSServerCert(b *backend) *framework.Path {
+	grantObject := &GrantMeta{
+        configobj: createConfigObject(b),
+    }   
+	return &framework.Path{
+		Pattern: "grant/cert/aws",
+		Fields: map[string]*framework.FieldSchema{
+			"name": &framework.FieldSchema{
+				Type:        framework.TypeString,
+				Description: "Name of the role that will be granted access",
+			},
+		},
+		Callbacks: map[logical.Operation]framework.OperationFunc{
+			logical.UpdateOperation: grantObject.grantAWSServerCert,
+		},
+	}
+}
+
+func pathGrantGroupAccess(b *backend) *framework.Path {
+	grantObject := &GrantMeta{
+        configobj: createConfigObject(b),
+    }   
+
+	return &framework.Path{
+		Pattern: "grant/access/group",
+		Fields: map[string]*framework.FieldSchema{
+			"privilege": &framework.FieldSchema{
+				Type:        framework.TypeString,
+				Default:	"r",
+				Description: "r,w,rw, read/write privilege to the group path",
+			},
+			"path": &framework.FieldSchema{
+				Type:        framework.TypeString,
+				Description: "Path in the target group to which access will be granted. Start with the groupname",
+			},
+			"name": &framework.FieldSchema{
+				Type:        framework.TypeString,
+				Description: "Name of the source group that will be granted access",
+			},
+		},
+		Callbacks: map[logical.Operation]framework.OperationFunc{
+			logical.UpdateOperation: grantObject.grantGroupAccess,
+		},
+	}
+}
+
+func pathGrantAWSAccess(b *backend) *framework.Path {
+	grantObject := &GrantMeta{
+        configobj: createConfigObject(b),
+    }   
+	return &framework.Path{
+		Pattern: "grant/access/aws",
+		Fields: map[string]*framework.FieldSchema{
+			"privilege": &framework.FieldSchema{
+				Type:        framework.TypeString,
+				Default:	"r",
+				Description: "r,w,rw, read/write privilege to the group path",
+			},
+			"path": &framework.FieldSchema{
+				Type:        framework.TypeString,
+				Description: "group path in the groups_secrets to share",
+			},
+			"role_arn": &framework.FieldSchema{
+				Type:        framework.TypeString,
+				Description: "ARN of the AWS role that will acess the path.",
+			},
+			"ttl": &framework.FieldSchema{
+				Type:		framework.TypeString,
+				Default:	"0.5h",
+				Description: "TTL for the token your role use.",
+			},
+		},
+		Callbacks: map[logical.Operation]framework.OperationFunc{
+			logical.UpdateOperation: grantObject.grantAWSRole,
+		},
+	}
+}
+
+func pathGrantKubernetesAccess(b *backend) *framework.Path {
+	grantObject := &GrantMeta{
+        configobj: createConfigObject(b),
+    }   
+	return &framework.Path{
+		Pattern: "grant/access/kubernetes",
+		Fields: map[string]*framework.FieldSchema{
+			"path": &framework.FieldSchema{
+				Type:        framework.TypeString,
+				Description: "group path in the groups_secrets to share",
+			},
+			"privilege": &framework.FieldSchema{
+				Type:        framework.TypeString,
+				Default:	"r",
+				Description: "r,w,rw, read/write privilege to the group path",
+			},
+			"service_account_name": &framework.FieldSchema{
+				Type:        framework.TypeString,
+				Default:     "",
+				Description: "Service Account Name.",
+			},
+			"service_account_namespace": &framework.FieldSchema{
+				Type:        framework.TypeString,
+				Default:     "",
+				Description: "Service Account Name namespace.",
+			},
+			"ttl": &framework.FieldSchema{
+				Type:		framework.TypeString,
+				Default:	"0.5h",
+				Description: "TTL for the token your role use.",
+			},
+		},
+		Callbacks: map[logical.Operation]framework.OperationFunc{
+			logical.UpdateOperation: grantObject.grantKubernetesRole,
+		},
+	}
+}
+
 func (b *GrantMeta) grantGroupServerCert(ctx context.Context, req *logical.Request, data *framework.FieldData) (*logical.Response, error) {
 	return b.grantServerCert(ctx,req,data,"groups","add")
 }

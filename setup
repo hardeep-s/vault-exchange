@@ -178,9 +178,9 @@ openssl x509 -in /tmp/cert.pem -text
 
 #*************** Enable AWS Authentication
 ~/Workspace/bin/vault auth enable aws 
-~/Workspace/bin/vault write auth/aws/config/client secret_key=$AWS_VAULT_USER_SECRET access_key=$AWS_VAULT_USER_ID
+#~/Workspace/bin/vault write auth/aws/config/client secret_key=$AWS_VAULT_USER_SECRET access_key=$AWS_VAULT_USER_ID
 
-#~/Workspace/bin/vault write auth/aws/role/dev-role-iam auth_type=iam bound_iam_principal_arn=arn:aws:iam::123456789012:role/MyRole policies=prod,dev max_ttl=500h
+~/Workspace/bin/vault write auth/aws/role/dev-role-iam auth_type=iam bound_iam_principal_arn=arn:aws:iam::123456789012:role/MyRole policies=prod,dev max_ttl=500h
 
 #*************** Enable AWS Authentication
 vault auth enable kubernetes

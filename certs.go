@@ -12,6 +12,58 @@ const MAXTTL = time.Hour * 24
 type certMeta struct {
     configobj *configMeta
 }
+
+func pathSignClientCert(b *backend) *framework.Path {
+	certObject := &certMeta{
+        configobj: createConfigObject(b),
+    }   
+	return &framework.Path{
+		Pattern: "cert/client/create",
+		Fields: map[string]*framework.FieldSchema{
+			"type": &framework.FieldSchema{
+				Type:        framework.TypeString,
+				Default:     "x509",
+				Description: "Type X509 or SSH",
+			},
+			"ttl": &framework.FieldSchema{
+				Type:		framework.TypeString,
+				Default:	"18h",
+				Description: "duration for which the cert will be valid",
+			},
+			"ips": &framework.FieldSchema{
+				Type:		framework.TypeString,
+				Default:	"*",
+				Description: "comma seperated list of source IP's from where the SSH cert is valid",
+			},
+		},
+		Callbacks: map[logical.Operation]framework.OperationFunc{
+			logical.UpdateOperation: certObject.generateClientCert,
+		},
+	}
+}
+
+func pathSignServerCert(b *backend) *framework.Path {
+	certObject := &certMeta{
+        configobj: createConfigObject(b),
+    }   
+	return &framework.Path{
+		Pattern: "cert/server/create",
+		Fields: map[string]*framework.FieldSchema{
+			"name": &framework.FieldSchema{
+				Type:        framework.TypeString,
+				Description: "subdomain name",
+			},
+			"ttl": &framework.FieldSchema{
+				Type:		framework.TypeString,
+				Default:	"8760h",
+				Description: "duration for which the cert will be valid",
+			},
+		},
+		Callbacks: map[logical.Operation]framework.OperationFunc{
+			logical.UpdateOperation: certObject.generateServerCert,
+		},
+	}
+}
 func (cert *certMeta) generateClientCert(ctx context.Context, req *logical.Request, data *framework.FieldData) (*logical.Response, error) {
 	auth := strings.Split(req.DisplayName, "-")[0]
 	user := strings.TrimPrefix(req.DisplayName, auth + "-")

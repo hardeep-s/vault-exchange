@@ -14,7 +14,26 @@ import (
 type groupMeta struct {
     configobj *configMeta
 }
-//registering a group includes creating  a path and corresponding policy for the group
+/*
+func pathRegisterGroup(b *backend) *framework.Path {
+	groupObject := &groupMeta{
+        configobj: createConfigObject(b),
+    }   
+	return &framework.Path{
+		Pattern: "register/group",
+		Fields: map[string]*framework.FieldSchema{
+			"name": &framework.FieldSchema{
+				Type:        framework.TypeString,
+				Description: "Group name to register",
+			},
+		},
+		Callbacks: map[logical.Operation]framework.OperationFunc{
+			logical.UpdateOperation: groupObject.registerGroups,
+		},
+	}
+}
+*/
+
 func (groupobj *groupMeta) registerGroups(ctx context.Context, req *logical.Request, data *framework.FieldData) (*logical.Response, error) {
 	auth := strings.Split(req.DisplayName, "-")[0]
 	user := strings.TrimPrefix(req.DisplayName, auth + "-")

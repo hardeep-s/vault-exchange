@@ -76,6 +76,7 @@ func Backend() *backend {
 			pathSignServerCert(&b),
 			pathSignClientCert(&b),
 			pathRegisterGroup(&b),
+			pathRegisterAWSRole(&b),
 			pathGrantGroupAccess(&b),
 			pathGrantGroupServerCert(&b),
 			pathRevokeGroupServerCert(&b),

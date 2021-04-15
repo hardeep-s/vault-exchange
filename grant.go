@@ -303,7 +303,7 @@ func (b *GrantMeta) readParams(ctx  context.Context,req *logical.Request, data *
     groupObject := &groupMeta{
         configobj: b.configobj,
     }
-	found,err:=groupObject.checkIfMyGroup(ctx,req,body["user"],body["groupname"])
+	found,err:=groupObject.checkIfMyGroup(ctx,req,body["groupname"])
 	if err !=nil {
 		return nil, err
 	}
@@ -384,45 +384,6 @@ func (c *ClientMeta) updateGrantMetadata(metapath, name ,action, path,privilege 
 	val.w=updateOneMetaPathKey(metadata,"w", action, path,privilege )
 	val.e=updateOneMetaPathKey(metadata,"e", action, path,privilege )
 	return  val,c.write(metapath,metadata)
-	/*
-	valstr, ok := metadata["r"]
-	if  ok {
-		// first remove any existing refrence to the path for the specified privileges
-		err =json.Unmarshal([]byte(valstr),val)
-		if strings.Contains(privilege,"r") {
-			if val.r !="" {
-				val.r=strings.ReplaceAll(val.r,path+";","")
-			}
-		} 
-		if strings.Contains(privilege,"w") {
-			if val.w !="" {
-				val.w=strings.ReplaceAll(val.w,path+";","")
-			}
-		} 
-		if strings.Contains(privilege,"e") {
-			if val.e !="" {
-				val.e=strings.ReplaceAll(val.e,path+";","")
-			}
-		} 
-	}
-
-	if action=="add" {
-		// add the  path for the specified privileges
-		if strings.Contains(privilege,"r") {
-			val.r=val.r + path+";"
-		}
-		if strings.Contains(privilege,"w") {
-			val.w=val.w + path+";"
-		}
-		if strings.Contains(privilege,"e") {
-			val.e=val.e + path+";"
-		}
-	}
-
-	out, err := json.Marshal(val)
-	metadata[name]=string(out)
-	return  val,c.write(metapath,metadata)
-	*/
 }
 
 func updateOneMetaPathKey(metadata map[string]string, key, action, path,privilege string) (string)  {

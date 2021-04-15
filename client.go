@@ -24,8 +24,6 @@ path "identity/*" {capabilities = ["list","read"]}
 path "{{.RootPath}}/*" {capabilities = ["list","read"]}
 path "{{.RootPath}}/secret/data/{{.Idtype}}/{{.Name}}/group_secrets/{{.Path}}" { capabilities = ["list", "create", "read", "update","delete", "sudo"]}
 `
-//path "{{.RootPath}}/secret/metadata/{{.Idtype}}/{{.Name}}/group_access/{{.Path}}" { capabilities = ["list", "read", "delete"]}
-//path "{{.RootPath}}/secret/metadata/{{.Idtype}}/{{.Name}}/group_grant/{{.Path}}" { capabilities = ["read"]}
 
 const group_admin_policy = `
 path "auth/exchange" {capabilities = ["read","update","delete","list"]}
@@ -35,18 +33,14 @@ path "auth/exchange/cert/client/*" {capabilities = ["update"]}
 path "auth/exchange/grant/access/*" {capabilities = ["update"]}
 path "{{.RootPath}}/secret/data/{{.Idtype}}/{{.Name}}/group_secrets/{{.Path}}" { capabilities = ["list", "create", "read", "update","delete", "sudo"]}
 `
-//path "{{.RootPath}}/secret/metadata/{{.Idtype}}/{{.Name}}/group_access/{{.Path}}" { capabilities = ["list", "read", "delete"]}
-//path "{{.RootPath}}/secret/metadata/{{.Idtype}}/{{.Name}}/group_grant/{{.Path}}" { capabilities = ["read"]}
 
 const grant_read_only_policy = `
 path "{{.RootPath}}/secret/data/{{.Idtype}}/{{.Name}}/group_secrets/{{.Path}}" { capabilities = ["list","read"]}
 `
-//path "{{.RootPath}}/secret/metadata/{{.Idtype}}/{{.Name}}/group_access/{{.Path}}" { capabilities = ["list", "read"]}
  
 const grant_write_only_policy = `
 path "{{.RootPath}}/secret/data/{{.Idtype}}/{{.Name}}/group_secrets/{{.Path}}" { capabilities = ["update"]}
 `
-//path "{{.RootPath}}/secret/metadata/{{.Idtype}}/{{.Name}}/group_access/{{.Path}}" { capabilities = ["delete"]}
 
 const grant_read_write_policy = `
 path "{{.RootPath}}/secret/data/{{.Idtype}}/{{.Name}}/group_secrets/{{.Path}}" { capabilities = ["list","read","update"]}

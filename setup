@@ -58,8 +58,8 @@ export VAULT_SKIP_VERIFY=true
 #~/Workspace/bin/vault secrets enable -version=2 kv
 
 #*******update default policy to allow authenticated users to make exchange API calls
- ~/Workspace/bin/vault read sys/policy/default > new_default_policy.hcl
-vi new_default_policy.hcl
+ ~/Workspace/bin/vault read sys/policy/default > default_policy.hcl
+vi default_policy.hcl
 #*******Remove comments (first 3 lines) &  add the following to the default policy
 
 # Vault Exchange Commands
@@ -74,7 +74,7 @@ path "auth/token/lookup" {
 }
 
 #********* Update the default policy
-~/Workspace/bin/vault policy write default  new_default_policy.hcl
+~/Workspace/bin/vault policy write default  default_policy.hcl
 
 #Enable OIDC authentication
 ~/Workspace/bin/vault auth enable oidc
@@ -151,10 +151,16 @@ write  auth/exchange/grant/cert/group name="aws-eng-infosec"
 write  auth/exchange/revoke/cert/group name="aws-eng-infosec"
 read sys/policy/groups-aws-eng-infosec
 write auth/exchange/cert/client/create  name="hardeep"
+list sys/policy
+read sys/policy/groups-aws-eng-infosec
+
+
 
 write auth/exchange/register/group  name="AWS-Eng-InfoSec"
 write auth/exchange/grant/access/group  name="AWS-Admin" privilege="r" path="AWS-Eng-InfoSec/group_secrets/*"
 write  auth/exchange/grant/cert/group name="AWS-Eng-InfoSec"
+write auth/exchange/register/aws name="smoke-role" arn="arn:aws:iam::903664935542:role/smoke-role" group="AWS-Eng-InfoSec"
+write auth/exchange/cert/client/create  type="X509"
 
 
 #Login from UI using OIDC and your SSO. Use the console in the UI to make all the subsequent calls

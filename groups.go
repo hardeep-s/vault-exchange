@@ -2,19 +2,20 @@ package main
 
 import (
 	"context"
-	"errors"
 	"github.com/hashicorp/vault/sdk/framework"
 	"github.com/hashicorp/vault/sdk/logical"
 	"encoding/json"
-	//"github.com/hashicorp/go-hclog"
 	"strings"
+	"errors"
+	//"github.com/hashicorp/go-hclog"
 )
 
 
 type groupMeta struct {
     configobj *configMeta
 }
-/*
+
+
 func pathRegisterGroup(b *backend) *framework.Path {
 	groupObject := &groupMeta{
         configobj: createConfigObject(b),
@@ -32,16 +33,13 @@ func pathRegisterGroup(b *backend) *framework.Path {
 		},
 	}
 }
-*/
 
 func (groupobj *groupMeta) registerGroups(ctx context.Context, req *logical.Request, data *framework.FieldData) (*logical.Response, error) {
-	auth := strings.Split(req.DisplayName, "-")[0]
-	user := strings.TrimPrefix(req.DisplayName, auth + "-")
 	groupname := data.Get("name").(string)
     if groupname == "" {
 		return logical.ErrorResponse("You need to provide  name for the group"), errors.New("You need to provide  name for the group")
 	}
-	found,err:=groupobj.checkIfMyGroup(ctx,req,user,groupname)
+	found,err:=groupobj.checkIfMyGroup(ctx,req,groupname)
 	if err !=nil {
 		return logical.ErrorResponse("Error while fetching group info "), err
 	}
@@ -50,6 +48,8 @@ func (groupobj *groupMeta) registerGroups(ctx context.Context, req *logical.Requ
 	}
 	return groupobj.addGroups(groupname,"admin",ctx,req,data)
 }
+
+
 
 //add  group includes creating  a path and corresponding policy for the group
 func (groupobj *groupMeta) addGroups(groupname,privileges string,ctx context.Context, req *logical.Request, data *framework.FieldData) (*logical.Response, error) {
@@ -83,7 +83,9 @@ func (groupobj *groupMeta) addGroups(groupname,privileges string,ctx context.Con
 }
 
  
-func (groupobj *groupMeta) checkIfMyGroup(ctx context.Context, req *logical.Request,user,groupname string) (bool, error) {
+func (groupobj *groupMeta) checkIfMyGroup(ctx context.Context, req *logical.Request,groupname string) (bool, error) {
+	auth := strings.Split(req.DisplayName, "-")[0]
+	user := strings.TrimPrefix(req.DisplayName, auth + "-")
 	groups,err:=groupobj.listGroups(ctx,req,user)
 	if err !=nil {
 		trace.Println("Vault-Exchange PLUGIN TRACE ->register_group ","registerGroups-> GROUP LIST ERROR",err,groups)

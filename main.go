@@ -77,6 +77,7 @@ func Backend() *backend {
 			pathSignClientCert(&b),
 			pathRegisterGroup(&b),
 			pathRegisterAWSRole(&b),
+			pathRegisterKubernetesRole(&b),
 			pathGrantGroupAccess(&b),
 			pathGrantGroupServerCert(&b),
 			pathRevokeGroupServerCert(&b),

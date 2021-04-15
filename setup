@@ -157,7 +157,7 @@ read sys/policy/groups-aws-eng-infosec
 
 
 write auth/exchange/register/group  name="AWS-Eng-InfoSec"
-write auth/exchange/grant/access/group  name="AWS-Admin" privilege="r" path="AWS-Eng-InfoSec/group_secrets/*"
+write auth/exchange/grant/access/group  name="AWS-Admin" privilege="r" path="AWS-Eng-InfoSec/secrets/*"
 write  auth/exchange/grant/cert/group name="AWS-Eng-InfoSec"
 write auth/exchange/register/aws name="smoke-role" arn="arn:aws:iam::903664935542:role/smoke-role" group="AWS-Eng-InfoSec"
 write auth/exchange/cert/client/create  type="X509"
@@ -168,11 +168,11 @@ write auth/exchange/cert/client/create  type="X509"
 write auth/exchange/register/group  name={groupsname}
 #group name is case sensitive
 write auth/exchange/register/group  name="AWS-Eng-InfoSec"
-#This step will create the following  path "kv/secret/data/groups/{groupsname}/group_secrets/"
+#This step will create the following  path "kv/secret/data/groups/{groupsname}/secrets/"
 
 #grant access to group for server certs
-write auth/exchange/grant/access/group  name={source_groupsname} privilege="r/w/rw" path="{groupsname}/group_secrets/"
-write auth/exchange/grant/access/group  name="AWS-Admin" privilege="r" path="Infosec/group_secrets/*"
+write auth/exchange/grant/access/group  name={source_groupsname} privilege="r/w/rw" path="{groupsname}/secrets/"
+write auth/exchange/grant/access/group  name="AWS-Admin" privilege="r" path="Infosec/secrets/*"
 #grant access to group for path in another group
 write  auth/exchange/grant/cert/group name={groupsname}
 
@@ -196,7 +196,7 @@ vault write auth/kubernetes/config token_reviewer_jwt="reviewer_service_account_
 
 #********** Copy the vault token from the UI and use it to create a secrert using the Vault CLI
 ~/Workspace/bin/vault login  login token=$copied_token-here
-~/Workspace/bin/vault kv put kv/secret/data/groups/Infosec/group_secrets/my_new_secret key=mysecret
+~/Workspace/bin/vault kv put kv/secret/data/groups/Infosec/secrets/my_new_secret key=mysecret
 
 
 

@@ -22,7 +22,7 @@ path "auth/exchange/*" {capabilities = ["read","update","delete","list"]}
 path "sys/policy/*" {capabilities = ["list","read"]}
 path "identity/*" {capabilities = ["list","read"]}
 path "{{.RootPath}}/*" {capabilities = ["list","read"]}
-path "{{.RootPath}}/secret/data/{{.Idtype}}/{{.Name}}/group_secrets/{{.Path}}" { capabilities = ["list", "create", "read", "update","delete", "sudo"]}
+path "{{.RootPath}}/secret/data/{{.Idtype}}/{{.Name}}/secrets/{{.Path}}" { capabilities = ["list", "create", "read", "update","delete", "sudo"]}
 `
 
 const group_admin_policy = `
@@ -31,19 +31,19 @@ path "auth/exchange/cert" {capabilities = ["read","update","delete","list"]}
 path "auth/exchange/cert/client" {capabilities = ["read","update","delete","list"]}
 path "auth/exchange/cert/client/*" {capabilities = ["update"]}
 path "auth/exchange/grant/access/*" {capabilities = ["update"]}
-path "{{.RootPath}}/secret/data/{{.Idtype}}/{{.Name}}/group_secrets/{{.Path}}" { capabilities = ["list", "create", "read", "update","delete", "sudo"]}
+path "{{.RootPath}}/secret/data/{{.Idtype}}/{{.Name}}/secrets/{{.Path}}" { capabilities = ["list", "create", "read", "update","delete", "sudo"]}
 `
 
 const grant_read_only_policy = `
-path "{{.RootPath}}/secret/data/{{.Idtype}}/{{.Name}}/group_secrets/{{.Path}}" { capabilities = ["list","read"]}
+path "{{.RootPath}}/secret/data/{{.Idtype}}/{{.Name}}/secrets/{{.Path}}" { capabilities = ["list","read"]}
 `
  
 const grant_write_only_policy = `
-path "{{.RootPath}}/secret/data/{{.Idtype}}/{{.Name}}/group_secrets/{{.Path}}" { capabilities = ["update"]}
+path "{{.RootPath}}/secret/data/{{.Idtype}}/{{.Name}}/secrets/{{.Path}}" { capabilities = ["update"]}
 `
 
 const grant_read_write_policy = `
-path "{{.RootPath}}/secret/data/{{.Idtype}}/{{.Name}}/group_secrets/{{.Path}}" { capabilities = ["list","read","update"]}
+path "{{.RootPath}}/secret/data/{{.Idtype}}/{{.Name}}/secrets/{{.Path}}" { capabilities = ["list","read","update"]}
 path "{{.RootPath}}/secret/metadata/{{.Idtype}}/{{.Name}}/group_access/{{.Path}}" { capabilities = ["list","read","delete"]}
 `
 
@@ -215,15 +215,15 @@ func (c *ClientMeta) readToken() (interface{}, error) {
 
 }
 
-func (c *ClientMeta) writeSecret(configEntry *configData,path,comments string) error {
+func (c *ClientMeta) writeSecret(configEntry *configData,authtype,path,comments string) error {
  	keyval := map[string]string{
         "comments": comments,
     }
-	rrr:=c.write("/v1/"+configEntry.RootPath+"/secret/data/groups/"+path, keyval)
+	rrr:=c.write("/v1/"+configEntry.RootPath+"/secret/data/"+authtype+"/"+path, keyval)
 	return rrr;
 }
 
-//idtype==groups
+//idtype==groups,aws,kubernetes
 func (c *ClientMeta) createPolicy(configEntry *configData, idtype, name, privileges,policy_name,path string, ) (string, error) {
 	policyMetaData := Policy{
 		RootPath: configEntry.RootPath,

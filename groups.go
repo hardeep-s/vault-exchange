@@ -29,12 +29,12 @@ func pathRegisterGroup(b *backend) *framework.Path {
 			},
 		},
 		Callbacks: map[logical.Operation]framework.OperationFunc{
-			logical.UpdateOperation: groupObject.registerGroups,
+			logical.UpdateOperation: groupObject.registerGroup,
 		},
 	}
 }
 
-func (groupobj *groupMeta) registerGroups(ctx context.Context, req *logical.Request, data *framework.FieldData) (*logical.Response, error) {
+func (groupobj *groupMeta) registerGroup(ctx context.Context, req *logical.Request, data *framework.FieldData) (*logical.Response, error) {
 	groupname := data.Get("name").(string)
     if groupname == "" {
 		return logical.ErrorResponse("You need to provide  name for the group"), errors.New("You need to provide  name for the group")
@@ -76,7 +76,7 @@ func (groupobj *groupMeta) addGroups(groupname,privileges string,ctx context.Con
 		if err != nil {
 			return logical.ErrorResponse("Failed to create group ",groupname, err.Error()), err
 		}
-		c.writeSecret(configEntry,groupname+"/group_secrets/donot_remove","Do not remove this key val")
+		c.writeSecret(configEntry,"groups",groupname+"/secrets/donot_remove","Do not remove this key val")
 	}
 
 	return c.writePolicy(policy_name, policystr)
@@ -88,7 +88,7 @@ func (groupobj *groupMeta) checkIfMyGroup(ctx context.Context, req *logical.Requ
 	user := strings.TrimPrefix(req.DisplayName, auth + "-")
 	groups,err:=groupobj.listGroups(ctx,req,user)
 	if err !=nil {
-		trace.Println("Vault-Exchange PLUGIN TRACE ->register_group ","registerGroups-> GROUP LIST ERROR",err,groups)
+		trace.Println("Vault-Exchange PLUGIN TRACE ->register_group ","checkIfMyGroup-> GROUP LIST ERROR",err,groups)
 		return false, err
 	}
 	return groups[groupname]!=nil,nil

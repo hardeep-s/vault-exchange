@@ -30,7 +30,7 @@ OIDC_ENDPOINT=$(echo $secrets | jq -r .OIDC_ENDPOINT)
 CN=$(echo $secrets | jq -r  .CN)
 VAULT_ADMIN=$(echo $secrets | jq -r .VAULT_ADMIN)
 DOMAIN=$(echo $secrets | jq -r .DOMAIN)
-
+#VAULT_ADMIN="Vault_Admin"
 
 echo export CLIENT_SECRET=$OIDC_CLIENT_SECRET
 echo export CLIENT_ID=$OIDC_CLIENT_ID

@@ -30,21 +30,37 @@ path "auth/exchange" {capabilities = ["read","update","delete","list"]}
 path "auth/exchange/cert" {capabilities = ["read","update","delete","list"]}
 path "auth/exchange/cert/client" {capabilities = ["read","update","delete","list"]}
 path "auth/exchange/cert/client/*" {capabilities = ["update"]}
+path "auth/exchange/grant" {capabilities = ["update"]}
+path "auth/exchange/grant/access" {capabilities = ["update"]}
 path "auth/exchange/grant/access/*" {capabilities = ["update"]}
+path "{{.RootPath}}" { capabilities = ["list" ]}
+path "{{.RootPath}}/secret" { capabilities = ["list" ]}
+path "{{.RootPath}}/secret/data" { capabilities = ["list" ]}
+path "{{.RootPath}}/secret/data/{{.Idtype}}" { capabilities = ["list"]}
+path "{{.RootPath}}/secret/data/{{.Idtype}}/{{.Name}}" { capabilities = ["list"]}
+path "{{.RootPath}}/secret/data/{{.Idtype}}/{{.Name}}/secrets" { capabilities = ["list"]}
 path "{{.RootPath}}/secret/data/{{.Idtype}}/{{.Name}}/secrets/{{.Path}}" { capabilities = ["list", "create", "read", "update","delete", "sudo"]}
 `
 
 const grant_read_only_policy = `
+path "{{.RootPath}}/secret/data/{{.Idtype}}" { capabilities = ["list"]}
+path "{{.RootPath}}/secret/data/{{.Idtype}}/{{.Name}}" { capabilities = ["list"]}
+path "{{.RootPath}}/secret/data/{{.Idtype}}/{{.Name}}/secrets" { capabilities = ["list"]}
 path "{{.RootPath}}/secret/data/{{.Idtype}}/{{.Name}}/secrets/{{.Path}}" { capabilities = ["list","read"]}
 `
  
 const grant_write_only_policy = `
-path "{{.RootPath}}/secret/data/{{.Idtype}}/{{.Name}}/secrets/{{.Path}}" { capabilities = ["update"]}
+path "{{.RootPath}}/secret/data/{{.Idtype}}" { capabilities = ["list"]}
+path "{{.RootPath}}/secret/data/{{.Idtype}}/{{.Name}}" { capabilities = ["list"]}
+path "{{.RootPath}}/secret/data/{{.Idtype}}/{{.Name}}/secrets" { capabilities = ["list"]}
+path "{{.RootPath}}/secret/data/{{.Idtype}}/{{.Name}}/secrets/{{.Path}}" { capabilities = ["list","update"]}
 `
 
 const grant_read_write_policy = `
+path "{{.RootPath}}/secret/data/{{.Idtype}}" { capabilities = ["list"]}
+path "{{.RootPath}}/secret/data/{{.Idtype}}/{{.Name}}" { capabilities = ["list"]}
+path "{{.RootPath}}/secret/data/{{.Idtype}}/{{.Name}}/secrets" { capabilities = ["list"]}
 path "{{.RootPath}}/secret/data/{{.Idtype}}/{{.Name}}/secrets/{{.Path}}" { capabilities = ["list","read","update"]}
-path "{{.RootPath}}/secret/metadata/{{.Idtype}}/{{.Name}}/group_access/{{.Path}}" { capabilities = ["list","read","delete"]}
 `
 
 type ClientMeta struct {

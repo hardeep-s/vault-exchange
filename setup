@@ -159,7 +159,9 @@ read sys/policy/groups-aws-eng-infosec
 write auth/exchange/register/group  name="AWS-Eng-InfoSec"
 write auth/exchange/grant/access/group  name="AWS-Admin" privilege="r" path="AWS-Eng-InfoSec/secrets/*"
 write  auth/exchange/grant/cert/group name="AWS-Eng-InfoSec"
-write auth/exchange/register/aws name="smoke-role" arn="arn:aws:iam::903664935542:role/smoke-role" group="AWS-Eng-InfoSec"
+write auth/exchange/register/aws arn="arn:aws:iam::903664935542:role/smoke-role" group="AWS-Eng-InfoSec"
+write auth/exchange/register/kubernetes  namespace="hardeep" service_account="hardeep_svc"  group="AWS-Eng-InfoSec"
+
 write auth/exchange/cert/client/create  type="X509"
 
 
